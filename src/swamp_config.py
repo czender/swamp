@@ -1,4 +1,4 @@
-#$Id: swamp_config.py,v 1.5 2007/06/18 23:09:50 wangd Exp $
+#$Id$
 # swamp_config.py
 # Copyright (c) 2007 Daniel L. Wang
 import ConfigParser

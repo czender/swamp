@@ -1,4 +1,8 @@
 # $Header: /cvsroot/nco/nco/src/ssdap/swamp_soapinterface.py,v 1.7 2007/07/04 00:15:09 wangd Exp $
+# $Id$
+# $URL$
+#
+# This file is released under the GNU General Public License version 3 (GPLv3)
 # Copyright (c) 2007 Daniel L. Wang
 from swamp_common import *
 from swamp_config import Config 

@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# $Id: swamp_client.py,v 1.4 2007/06/22 02:41:15 wangd Exp $
+# $Id$
 # swamp_client.py
 # This is part of SWAMP, Copyright 2007 - Daniel L. Wang 
 
