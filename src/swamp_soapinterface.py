@@ -214,6 +214,12 @@ class ScriptContext:
         self.sched = Scheduler(config, None) # build schedule without executor.
         self.commandFactory = CommandFactory(config)
         self.parser = Parser()
+        self.parser.updateVariables({
+            "SWAMPVERSION" : "0.1+",
+            "SHELL" : "swamp",
+            "SWAMPHOSTNAME" : self.config.serverHostname,
+            })
+        
         self.taskId = self.sched.makeTaskId()
         pass
     def addScript(self, script):
@@ -263,7 +269,7 @@ class Hello(tResource.Resource):
       Hello, world! I am located at %r.  Request contains: %s
     </html>""" % (request.prepath, dir(request) )
     def render_POST(self, request):
-        magictoken = "56bnghty56" #make this site configurable
+        magictoken = "56bnghty56" #make this site-configurable
         request.args["userfile"]
         return """<html>
       Hello, world! I am located at %r.  Request contains: %s .
