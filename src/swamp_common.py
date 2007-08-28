@@ -4,7 +4,7 @@
 #  not meant to be used standalone.
 # 
 # Copyright (c) 2007, Daniel L. Wang
-# Licensed under the GNU General Public License v2
+# Licensed under the GNU General Public License v3
 
 """Parser and scheduler module for SWAMP
 This provides high level access to SWAMP parsing and scheduling functionality.
@@ -758,18 +758,21 @@ class Parser:
     def __init__(self):
         Parser.staticInit()
         self.handlers = {} # a lookup table for parse accept handlers
-        self.variables = {} # a lookup table for variables
+        self._variables = {} # a lookup table for variables
         self.lineNum=0
         self.modules = []
         self.handlerDefaults()
         self.handleFunc = None
         self.commands = []
 
-        self.variableParser = VariableParser(self.variables)
+        self.variableParser = VariableParser(self._variables)
         self._context = Parser.BaseContext(self)
         self._rootContext = self._context
         pass
 
+    def updateVariables(self, defs):
+        self._variables.update(defs)
+        
     def handlers(self, newHandlers):
         def newNcoCommand(argv):
             print "--".join(argv)
@@ -780,7 +783,7 @@ class Parser:
         self.modules = [(NcoParser, None)]
 
         pass
-        
+    
     def commandHandler(self, handle):
         """handler is a function reference.  the function is a unary
         function: handle(ParserCommand)"""
