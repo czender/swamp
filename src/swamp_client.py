@@ -1,7 +1,12 @@
 #!/usr/bin/python
 # $Id$
+# $URL$
 # swamp_client.py
-# This is part of SWAMP, Copyright 2007 - Daniel L. Wang 
+#
+# This file is part of the SWAMP project and is released under
+# the terms of the GNU General Public License version 3 (GPLv3)
+# Copyright 2007 - Daniel L. Wang 
+
 
 # Standard Python imports
 import getopt
