@@ -46,4 +46,6 @@ substituted = 'if [ "1" = "1" ] ; then'
 #print swamp_common.Parser.BranchContext.Expr.IfHeading.parseString(substituted)
 #a.parseScript(iftest, FakeFactory())
 #a.parseScript(fortest, FakeFactory())
-a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
+#a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
+a.parseScript(open("illustr.sh").read(), FakeFactory())
+print a._variables

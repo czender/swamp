@@ -42,6 +42,7 @@ from SOAPpy import SOAPProxy # for remote execution
 #
 from swamp_dbutil import JobPersistence
 from swamp_config import Config
+from syntax_extensions import BacktickParser
 
 # define global swamp logger
 log = logging.getLogger("SWAMP")
@@ -80,13 +81,27 @@ class VariableParser:
     sReference = protReference | unpReference
     # should support double-quoted references
     reference = sReference
-    backtickString = Literal("`") + CharsNotIn("`") + Literal("`")
+    #backtickString = Literal("`") + CharsNotIn("`") + Literal("`")
     
     def __init__(self, varmap):
         self.varMap = varmap ## varMap is exposed/public.
+        self.backtickp = BacktickParser()
+        self.backtickString = self.backtickp.backtickString.copy()
+        self.backtickString.setParseAction(self.backtickp.transform)
+
+        def quoteIfNeeded(aStr):
+            pass
+        def flattenReference(tok):
+            if isinstance(tok,str):
+                return tok
+            else:
+                return " ".join(tok)
+        def refParseAction(s, loc, toks):
+            return [flattenReference(self.varMap[t]) for t in toks]
+
         reference = VariableParser.reference.copy()
         # lookup each substitution reference in the dictionary
-        reference.setParseAction(lambda s,loc,toks: [self.varMap[t] for t in toks])
+        reference.setParseAction(refParseAction)
         dblQuoted = dblQuotedString.copy()
         dblQuoted.setParseAction(lambda s,loc,toks: [self.varSub(t) for t in toks])
         
@@ -97,19 +112,27 @@ class VariableParser:
         self.sglQuoted = sglQuoted
         varValue = (self.dblQuoted
                     | self.sglQuoted
+                    | self.backtickString
                     | Word(alphanums+"-_/")
-                    | CharsNotIn(" "))
+                    | CharsNotIn(" `")
+                    )
+    
         
         varDefinition = Optional(Literal("export ")).suppress() \
                         + VariableParser.identifier \
                         + Literal("=").suppress() + varValue
 
         def assign(lhs, rhs):
+            if len(rhs) == 1:
+                rhs = rhs[0]
             self.varMap[lhs] = rhs
+            print "assigning %s = %s" % (lhs,rhs)
+
             logging.debug("assigning %s = %s" % (lhs,rhs))
             return
+
         varDefinition.setParseAction(lambda s,loc,toks:
-                                     assign(toks[0], toks[1]))
+                                     assign(toks[0], toks[1:]))
         self.arithExpr = self.makeCalcGrammar()
         varArithmetic = Literal("let ").suppress() \
                         + VariableParser.identifier \
@@ -149,6 +172,8 @@ class VariableParser:
         identifier = VariableParser.identifier.copy()
         identifier.setParseAction(lambda s,loc,toks:
                                   [self.varMap[t] for t in toks])
+        
+        
         expr = Forward()
         atom = (Optional("-") + (snum | identifier|(lpar+expr+rpar)))
 
