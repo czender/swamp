@@ -1,3 +1,7 @@
+# $Id$
+#
+# Purpose: provide a testing apparatus to various pieces of parser functionality.
+
 import swamp_common
 #from pyparsing import *
 class FakeFactory:
@@ -47,5 +51,5 @@ substituted = 'if [ "1" = "1" ] ; then'
 #a.parseScript(iftest, FakeFactory())
 #a.parseScript(fortest, FakeFactory())
 #a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
-a.parseScript(open("illustr.sh").read(), FakeFactory())
+a.parseScript(open("../scripts/illustr.sh").read(), FakeFactory())
 print a._variables
