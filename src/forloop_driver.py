@@ -52,4 +52,4 @@ substituted = 'if [ "1" = "1" ] ; then'
 #a.parseScript(fortest, FakeFactory())
 #a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
 a.parseScript(open("../scripts/illustr.sh").read(), FakeFactory())
-print a._variables
+#print a._variables

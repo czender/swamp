@@ -24,25 +24,22 @@ class BacktickParser:
 
     def safeToExecute(self, expr):
         lexed = shlex.split(expr)
-        print expr,"-->",lexed
-        #print "lexed",lexed
         if expr and  lexed[0] in self.safeBinaries:
             return lexed
         # if not in, returns None--> false
 
     def execute(self, lexed):
-        print "hey, executing: ",lexed
         fixed = [self.safeBinaries[lexed[0]]] + lexed[1:]
         output = subprocess.Popen(fixed, stdout=subprocess.PIPE).communicate()[0]
-        #print lexed,"returned",output,"and",output.split()
-        return filter(lambda t: t, output.split(os.linesep))
+        f = filter(lambda t: t, output.split(os.linesep))
+        return f
 
 
     def evaluate(self, aString):
         try:
             results = self.backtickString.parseString(aString)
         except ParseException,e:
-            print "parse error"
+            print "parse error" ## FIXME: convert to log debug
             return None
         ok =  self.safeToExecute(results.extExpr)
         if not ok:
@@ -51,13 +48,26 @@ class BacktickParser:
             return self.execute(ok)
 
     def transform(self, s,loc,toks):
-        print "transforming ",s,loc,toks
-        
         lex = self.safeToExecute(toks[1])
         if lex:
             return self.execute(lex)
         return None
         #        self.backtickString.transformString(s)
+
+    def quoteIfNeeded(self, aStr):
+        # for now, only look for whitespace to decide on quoting
+        # if there is whitespace in aStr...
+        if reduce(lambda x,y: x or y.isspace(), aStr, False):
+            # for now, just add single quotes.
+            if "'" in aStr:
+                raise StandardError("Quoting strings with quotes not implemented")
+            return "'" + aStr + "'"
+        return aStr
+        
+    def transformQuoted(self, s,loc,toks):
+        transformed = self.transform(s, loc, toks)
+        return " ".join(map(self.quoteIfNeeded, transformed))
+
         
     def evaluateTest(self, aString):
         out = self.evaluate(aString)
@@ -68,29 +78,33 @@ class BacktickParser:
         return out
         
 
-problems = [
-    "`seq 1 5`",
-    "`rm 1 5`",
-    "`printf \"%02d\" ${nbr}`",
-    "if [ -z \"$1\" ]; then",
-    "mkdir -p ${drc_out}",
-    "for ssn in DJF MAM JJA SON ; do",
-    "  for yy in `seq ${START_YR} ${END_YR}`; do",
-    "    YYYY=`printf \"%04d\" ${yy}`",
-    "mv ${drc_in}${CASEID}_${YYYY}0101_${YYYY}_1800.nc ${YYYY}_yr_ts.nc",
-    "echo \"Creating Duration Time Series.............\"",
-    "    nbr=`printf \"%02d\" ${nbr}`",
-    "if [ $? -ne 0 ]; then",
-    "if [ $MM -le 11 ]; then",
-    "for yr in `seq ${START_YR} ${END_YR}`; do",
-    "if [ $? -eq 0 ]; then",
-    "for nbr in {01..04}; do",
-    "exit 0"
-    ]
+class SyntaxSelfTest:
+    def __init__(self):
+        problems = [
+            "`seq 1 5`",
+            "`rm 1 5`",
+            "`printf \"%02d\" ${nbr}`",
+            "if [ -z \"$1\" ]; then",
+            "mkdir -p ${drc_out}",
+            "for ssn in DJF MAM JJA SON ; do",
+            "  for yy in `seq ${START_YR} ${END_YR}`; do",
+            "    YYYY=`printf \"%04d\" ${yy}`",
+            "mv ${drc_in}${CASEID}_${YYYY}0101_${YYYY}_1800.nc ${YYYY}_yr_ts.nc",
+            "echo \"Creating Duration Time Series.............\"",
+            "    nbr=`printf \"%02d\" ${nbr}`",
+            "if [ $? -ne 0 ]; then",
+            "if [ $MM -le 11 ]; then",
+            "for yr in `seq ${START_YR} ${END_YR}`; do",
+            "if [ $? -eq 0 ]; then",
+            "for nbr in {01..04}; do",
+            "exit 0"
+            ]
 
-def testBacktickParser():
-    bp = BacktickParser()
-    #map(lambda n: bp.evaluate(problems[n]), [0,1,2,3])
-    map(bp.evaluateTest, problems)
+    def testBacktickParser(self):
+        bp = BacktickParser()
+        #map(lambda n: bp.evaluate(problems[n]), [0,1,2,3])
+        map(bp.evaluateTest, problems)
 
-testBacktickParser()
+if __name__ == '__main__':
+    t = SyntaxSelfTest()
+    t.testBacktickParser()

@@ -126,7 +126,7 @@ class VariableParser:
             if len(rhs) == 1:
                 rhs = rhs[0]
             self.varMap[lhs] = rhs
-            print "assigning %s = %s" % (lhs,rhs)
+            #print "assigning %s = %s" % (lhs,rhs)
 
             logging.debug("assigning %s = %s" % (lhs,rhs))
             return
@@ -459,23 +459,6 @@ class NcoBinaryFinder:
         # regardless of netcdf4 or opendap.
         return self.config.execNcoDap + os.sep + cmd.cmd
 
-class LoopParser:
-    """LoopParser is a parser module to use with the main parser.
-    Handling loops require handling some state, so we need to plug
-    an *instance* into the Parser, and not the static class, as
-    with NcoParser.
-    """
-    def __init__(self):
-        pass
-
-    def parse(self, original, argv, lineNumber=0, factory=None):
-        pass
-
-    def accepts(self, argv):
-        if len(argv) < 1:
-            return False
-        else:
-            return (argv[0] in NcoParser.commands)    
         
 
 # Command and CommandFactory do not have dependencies on NCO things.
@@ -936,7 +919,7 @@ class Parser:
             """
 
             # apply variable handling
-            print "evaluating:", self._lineNum, self._line
+            #print "evaluating:", self._lineNum, self._line
             line = evalContext.variableParser.apply(self._line)
             if not isinstance(line, str):
                 return []
@@ -1242,9 +1225,11 @@ class Parser:
             Identifier = Identifier.setResultsName("identifier")
             Value = Word(alphanums).setResultsName("realValue")
             CommandLine = OneOrMore(Word(alphanums + '_-'))
-            BacktickExpr = Literal('`') + CommandLine + Literal('`')
+            #BacktickExpr = Literal('`') + CommandLine + Literal('`')
+            BacktickExpr = BacktickParser.backtickString
             SubValue = BacktickExpr.copy().setResultsName("indValue")
-            
+
+
             Range = OneOrMore(Value ^ SubValue).setResultsName("range")
             ForHeading = For + Identifier + In + Range + Semicolon + Do
             ForHeading2_1 = For + Identifier + In + Range
@@ -1254,13 +1239,14 @@ class Parser:
             
         def __init__(self, parentContext, parseResult):
             if isinstance(parseResult, tuple):
-                self.openLine = (parseResult[0], parseResult[1])
+                self._openLine = (parseResult[0], parseResult[1])
                 parseResult = parseResult[2]
 
             self._parentContext = parentContext
             self._loopHeading = parseResult
             self._members = []
             print "new loop"
+            
             pass
 
         def _loopParse(self, line):
@@ -1274,7 +1260,15 @@ class Parser:
         def _unroll(self, evalContext):
             varname = self._loopHeading["identifier"]
             iterations = []
-            for val in self._loopHeading["range"]:
+            # detect additional expansion.
+            bb = BacktickParser()
+            expr = BacktickParser.backtickString.copy()
+            expr.setParseAction(bb.transformQuoted)
+            # transform potential backticks
+            xf = expr.transformString(self._openLine[0])
+            newone = self.Expr.ForHeading.parseString(xf)
+            rr = newone["range"]
+            for val in rr:
                 evalContext.variableParser.varMap[varname] = val
                 iterations.extend(self._iterateLoop(evalContext))
             return iterations
