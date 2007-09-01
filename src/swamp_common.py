@@ -990,7 +990,8 @@ class Parser:
 
             Reference = VariableParser.reference
 
-            PlainString = Word(alphanums + "_,")
+            #FIXME: can we use a looser definition?
+            PlainString = Word(alphanums + "_,.")  
             Squoted = Literal("'") + OneOrMore(PlainString) + Literal("'")
             Dquoted = Literal('"').suppress() + OneOrMore(PlainString | Reference) + Literal('"').suppress()
             BinaryOp = MatchFirst([Literal("="), Literal("=="), Literal("!="),
@@ -1029,6 +1030,7 @@ class Parser:
                     return True
 
                 line = evalContext.variableParser.apply(self._line)
+                print "checking if:",line
                 parsed = self._parseExpr.parseString(line)
                 boolean = parsed["boolean"]
                 rhs = boolean["rhs"]

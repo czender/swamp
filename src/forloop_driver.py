@@ -43,13 +43,36 @@ def test1():
     print (Literal('"') + eee.Reference + Literal('"')).parseString('"$hello"')
     print (Literal('"') + OneOrMore(eee.Reference | eee.PlainString) + Literal('"')).parseString('"$hello"')
 
-#swamp_common.Parser.BranchContext.Expr.IfHeading.parseString("""if [ "${flg_typ}" = "${flg_tst}" ] ; then""")
 
-substituted = 'if [ "1" = "1" ] ; then'
+def test2():
+    #swamp_common.Parser.BranchContext.Expr.IfHeading.parseString("""if [ "${flg_typ}" = "${flg_tst}" ] ; then""")
 
-#print swamp_common.Parser.BranchContext.Expr.IfHeading.parseString(substituted)
-#a.parseScript(iftest, FakeFactory())
-#a.parseScript(fortest, FakeFactory())
-#a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
-a.parseScript(open("../scripts/illustr.sh").read(), FakeFactory())
-#print a._variables
+    substituted = 'if [ "1" = "1" ] ; then'
+    #print swamp_common.Parser.BranchContext.Expr.IfHeading.parseString(substituted)
+    #a.parseScript(iftest, FakeFactory())
+    #a.parseScript(fortest, FakeFactory())
+    #a.parseScript(open("charlie_prod.sh").read(), FakeFactory())
+
+def test3():
+    a.parseScript(open("../scripts/illustr.sh").read(), FakeFactory())
+    #print a._variables
+def testParse(filename):
+    a.updateVariables({"SWAMPVERSION" : "0.1+",
+                       "SHELL" : "swamp",
+                       "SWAMPHOSTNAME" : "pbs.calit2.uci.edu"})
+
+    a.parseScript(open(filename).read(), FakeFactory())
+
+
+def main():
+    import os,sys
+    if len(sys.argv) == 2:
+        path = sys.argv[1]
+        if os.path.isfile(path):
+            testParse(path)
+    else:
+        testParse("../scripts/illustr.sh")
+        
+
+if __name__ == '__main__':
+    main()
