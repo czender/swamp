@@ -12,13 +12,15 @@ prd='0' # [flg] Production mode
 
 typ=$prd
 
+one='1'
+ten='10'
 sequence=`seq 10 15`
-
-ncwa $sequence
+sequence1=`seq $one ${ten}`
+ncwa $sequence $sequence1
 if [ "${typ}" = "${tst}" ] ; then
     ncra -O ~/nco/data/in.nc ~/foo.nc
 elif [ "${typ}" = "${prd}" ] ; then 
-    for yra in `seq 1 12` ; do
+    for yra in `seq 1 12` `seq 2 3` ; do
         yr=`printf "%02d" ${yra}`
 
         ncra -O ${yr}.nc oo${yr}.nc
