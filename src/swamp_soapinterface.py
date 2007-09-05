@@ -145,6 +145,22 @@ class StandardJobManager:
     def pollStateMany(self, tokenList):
         return map(self.pollState, tokenList)
 
+    def pollJob(self, token):
+        """poll a job, using a job token"""
+        if isinstance(self.jobs[token], SwampTask):
+            task = self.jobs[token]
+            
+            r = task.result()
+            if r == True:
+                return [0,""]
+            elif r != None:
+                return [1, r]
+        else:
+            return None
+        
+
+
+
     def actualToPub(self, f):
         log.debug("++"+f +self.config.execResultPath)
         relative = f.split(self.config.execResultPath + os.sep, 1)
@@ -200,6 +216,9 @@ class StandardJobManager:
         root.putChild(self.config.serverFilePath, pubRes)
         root.putChild(self.config.serverPath, TwistedSoapSwampInterface(self))
         #root.putChild("fx", Hello(self.config))
+        self.config.serverInspectPath = "inspect"
+        self.config.runtimeJobManager = self
+        root.putChild("inspect", InspectorResource(InspectorInterface(self.config)))
         reactor.listenTCP(self.config.serverPort, tServer.Site(root))
         log.debug("starting swamp SOAP ")
         reactor.run()
@@ -241,6 +260,163 @@ class ScriptContext:
         pass
     pass
 
+class InspectorResource(tResource.Resource):
+    def __init__(self, interface):
+        tResource.Resource.__init__(self)
+        self.interface = interface
+        
+    def render_GET(self, request):
+        if "action" in request.args:
+            action = request.args["action"][0]
+            flattenedargs = dict(map(lambda t:(t[0],t[1][0]), request.args.items()))
+            return self.interface.execute(action, flattenedargs, lambda x:None)
+            
+    
+    def getChild(self, name, request):
+        if name == '':
+            return self
+        return tResource.Resource.getChild(
+            self, name, request)
+
+
+class InspectorInterface:
+    def __init__(self, config):
+        self.actions = {"rebuilddb": self.rebuildDb,
+                        "showdb": self.showDb,
+                        "catalog" : self.catalog,
+                        "help": self.printHelp,
+                        "ls" : self.listFiles,
+                        "list" : self.listJobs,
+                        "env" : self.showEnv,
+                        "filedb" : self.showFileDb }
+        self.config = config
+        
+    def buildUrl(self, action):
+        return  "http://%s:%d/%s?action=%s" % (self.config.serverHostname,
+                                        self.config.serverPort,
+                                        self.config.serverInspectPath,
+                                        action)
+
+    def handyHeader(self):
+        pre = '<span id="toolbar"> Handy Toolbar: '
+        bulk = ' | '.join(map( lambda x : '<a href="%s">%s</a>' 
+                               % (self.buildUrl(x),x), self.actions.keys()))
+        post = '</span>'
+        return "".join([pre,bulk,post])
+    def rebuildDb(self,form):
+        """resets the db, clearing entries and using the latest schema"""
+        import swamp_dbutil
+        print self.handyHeader()
+        print "dbfilename is ", dbfilename
+        try:
+            swamp_dbutil.deleteTables(dbfilename)
+        except:
+            pass # ok if error deleting tables.
+        swamp_dbutil.buildTables(dbfilename)
+        
+        return "Done rebuilding db"
+    def showDb(self,form):
+        """prints the db state"""
+        import swamp_dbutil
+        print self.handyHeader()
+        swamp_dbutil.quickShow(dbfilename)
+        
+        return "done with output"
+    def showFileDb(self, form):
+        """prints the filestate in the db"""
+        import swamp_dbutil
+        print self.handyHeader()
+        swamp_dbutil.fileShow(dbfilename)
+        return "done with output"
+    def printHelp(self,form):
+        """prints a brief help message showing available commands"""
+        r = self.handyHeader()
+        r += "\n<pre>available commands:\n"
+        for a in self.actions:
+            r += "%-20s : %s\n" %(a, self.actions[a].func_doc)
+        r += "</pre>\n"
+        return r
+        
+        return "done with output"
+    def showEnv(self, form):
+        """prints the cgi script's available env vars"""
+        print self.handyHeader()
+        for k in os.environ:
+            print "%-20s : %s" %(k,os.environ[k])
+        print "</pre>"
+        return "done printing env"
+
+    def listJobs(self, form):
+        return str( self.config.runtimeJobManager.jobs)
+
+    def osFind(self, *paths ):
+        """Roughly, an implementation of standard unix 'find'.
+        Implementation borrowed from:
+        http://www.python.org/search/hypermail/python-1994q2/0116.html
+        by Steven D. Majewski (sdm7g@elvis.med.Virginia.EDU)"""
+        list = []
+        expand = lambda name: os.path.expandvars(os.path.expanduser(name))
+        def append( list, dirname, filelist ):
+            DO_NOT_INCLUDE=set([".",".."])
+            for filename in filelist:
+                if filename not in DO_NOT_INCLUDE:
+                    filename = os.path.join( dirname, filename )
+                    if not os.path.islink( filename ):
+                        list.append( filename )
+
+        for pathname in paths:
+            os.path.walk( expand(pathname), append, list )
+        return list
+    
+
+
+    def rawCatalog(self, root=""):
+        prefix = self.config.execSourcePath
+        topchildren = os.listdir(prefix)
+        files = self.osFind(prefix)
+        ncfiles = filter(lambda s: s.endswith(".nc") and s.startswith(prefix),
+                         files)
+        sanitized = map(lambda s: (s[len(prefix):], os.stat(s).st_size),
+                        ncfiles)
+        return sanitized
+
+    def catalog(self, form):
+        commaize = lambda n: (str(n), (n>999) and commaize(n/1000)+ ",%03d" % (n%1000)   )[n>999]           
+        return "<br/>".join(map(lambda t: "%s -- %s" %(t[0],commaize(t[1])),
+                                self.rawCatalog()))
+
+        
+    
+    def listFiles(self,form):
+        """does a normal ls file listing. sorta-secure"""
+        print self.handyHeader()
+        if not form.has_key("path"):
+            print "no path specified, specify with parameter 'path'"
+            return
+        path = form["path"].strip()
+        if path.startswith("/") or path.startswith("../") \
+           or (path.find("..") > -1):
+            print "invalid path specified, try again"
+            return
+        ppath = os.path.join(os.getenv("DOCUMENT_ROOT"),path)
+        print "<pre>BEGIN listing for :",path
+        #no leading /
+        try:
+            for a in os.listdir(ppath):
+                print a
+        except OSError:
+            print "END Error using path ", path
+        print "END listing</pre>"
+        
+        return "done with output"
+        
+
+    def execute(self, action, form, errorfunc):
+        if action in self.actions:
+            return self.actions[action](form)
+        else:
+            errorfunc()
+
 class TwistedSoapSwampInterface(tSoap.SOAPPublisher):
     def __init__(self, jobManager):
         self.jobManager = jobManager
@@ -254,6 +430,8 @@ class TwistedSoapSwampInterface(tSoap.SOAPPublisher):
         return self.jobManager.pollState(token)
     def soap_pollOutputs(self, token):
         return self.jobManager.pollOutputs(token)
+    def soap_pollJob(self, jobToken):
+        return self.jobManager.pollJob(jobToken)
     def soap_pyInterface(self, cmdline): # huge security hole for debugging
         return self.jobManager.pyInterface(cmdline)
 
