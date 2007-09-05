@@ -1693,6 +1693,7 @@ class SwampTask:
         if isinstance(obj, Command):
             actfiles = obj.actualOutputs
         else:
+            log.debug("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
             pass
         log.debug("raw outs are %s" %(str(actfiles)))
