@@ -1744,7 +1744,9 @@ class SwampTask:
         
         
 class SwampInterface:
-
+    """SwampInterface is a class which exports an interface to doing the meat
+    of swamp:  task admission and top level execution managment.  Its looping
+    thread runs whatever tasks are queued up."""
     def __init__(self, config, executor=None):
         self.config = config
         cfile = logging.FileHandler(self.config.logLocation)
@@ -1767,27 +1769,75 @@ class SwampInterface:
                 self.remote.append(RemoteExecutor(s[0], s[1]))
         else:
             self.remote = None
-        self.tasks = []
+        self.mainThread = SwampInterface.MainThread(self)
         pass
+
+    class MainThread(threading.Thread):
+        def __init__(self, interface):
+            threading.Thread.__init__(self)
+            self.interface = interface
+            self.freeTaskCondition = threading.Condition()
+            self.ready = []
+            self.running = None
+            self.done = []
+            self.markedForDeath = False
+            pass
+
+        def run(self):
+            # Consume one item
+            self.freeTaskCondition.acquire()
+            while not self.ready:
+                print "no tasks, so gonna wait"
+                if self.markedForDeath:
+                    self.freeTaskCondition.release()
+                    return
+                self.freeTaskCondition.wait()
+            self.runReadyTask()
+            self.freeTaskCondition.release()
+
+        def acceptTask(self, task):
+            # Produce one item
+            self.freeTaskCondition.acquire()
+            self.ready.append(task)
+            self.freeTaskCondition.notify()
+            self.freeTaskCondition.release()
+
+        def acceptDeath(self):
+            self.freeTaskCondition.acquire()
+            self.markedForDeath = True
+            self.freeTaskCondition.notify()
+            self.freeTaskCondition.release()
+            
+        def runReadyTask(self):
+            # move top of readylist to running
+            assert self.ready
+            self.running = self.ready.pop(0)
+            # execute
+            self.running.run()
+            # move running to done.
+            self.done.append(self.running)
+            self.running = None            
+        
+
+    def startLoop(self):
+        self.mainThread.start() 
+        pass
+
+    def grimReap(self):
+        """Added this to wakeup the waiting loop thread and kill it because
+        it won't die otherwise.  Not needed in test code, so it's probably
+        because of the twisted.reactor environment, which traps the
+        keyboard interrupt and merely aborts the reactor's listening."""
+        self.mainThread.acceptDeath()
 
     def submit(self, script, outputMapper):
         t = SwampTask(self.executor, self.remote, self.config,
                       script, outputMapper)
-        self.tasks.append(t)
-#         p = Parser()
-#         sch = Scheduler(self.config, self.executor)
-#         p.commandHandler(sch.schedule)
-#         cf = CommandFactory(self.config)
-#         p.parseScript(script, cf)
-#         sch.finish()
         log.info("after parse: " + time.ctime())
-        t.run()
-#        sch.executeParallelAll(self.remote)
-#        task = sch.taskId
-
+        self.mainThread.acceptTask(t)
         return t
 
-        
+
 
     def fileStatus(self, logicalname):
         """return state of file by name"""

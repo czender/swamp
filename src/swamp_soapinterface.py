@@ -1,4 +1,4 @@
-# $Header: /cvsroot/nco/nco/src/ssdap/swamp_soapinterface.py,v 1.7 2007/07/04 00:15:09 wangd Exp $
+#!/usr/bin/env python
 # $Id$
 # $URL$
 #
@@ -56,10 +56,11 @@ class StandardJobManager:
         self.resultExportPref = self.exportPrefix + "/"
 
         self.swampInterface = SwampInterface(self.config, le)
-        
+        self.swampInterface.startLoop()
         self.token = 0
         self.tokenLock = threading.Lock()
         self.jobs = {}
+        self.discardedJobs = {}
         pass
 
     def reset(self):
@@ -104,7 +105,7 @@ class StandardJobManager:
     def discardFlow(self, token):
         task = self.jobs[token]
         task.outMap.cleanPhysicals()
-        self.jobs.pop(token)
+        self.discardedJobs[token] = self.jobs.pop(token)
         log.debug("discarding for token %d" %(token))
         pass
 
@@ -219,10 +220,15 @@ class StandardJobManager:
         self.config.serverInspectPath = "inspect"
         self.config.runtimeJobManager = self
         root.putChild("inspect", InspectorResource(InspectorInterface(self.config)))
+
         reactor.listenTCP(self.config.serverPort, tServer.Site(root))
         log.debug("starting swamp SOAP ")
         reactor.run()
         pass
+
+    def grimReap(self):
+        self.swampInterface.grimReap()
+        
     pass # end class StandardJobManager
 
 class ScriptContext:
@@ -290,6 +296,7 @@ class InspectorInterface:
                         "env" : self.showEnv,
                         "filedb" : self.showFileDb }
         self.config = config
+        self.endl = "<br/>"
         
     def buildUrl(self, action):
         return  "http://%s:%d/%s?action=%s" % (self.config.serverHostname,
@@ -347,7 +354,16 @@ class InspectorInterface:
         return "done printing env"
 
     def listJobs(self, form):
-        return str( self.config.runtimeJobManager.jobs)
+        donejobs = self.config.runtimeJobManager.discardedJobs
+        print donejobs
+        leftover = self.endl.join(map(lambda x:"%d -> %s" %(x[0], dir(x[1])), donejobs.items()))
+        
+        return "".join([ self.handyHeader(), self.endl,
+                         "running jobs", self.endl,
+                         str( self.config.runtimeJobManager.jobs),
+                         "discarded-->", self.endl,
+                         str( self.config.runtimeJobManager.discardedJobs),
+                         leftover])
 
     def osFind(self, *paths ):
         """Roughly, an implementation of standard unix 'find'.
@@ -381,7 +397,8 @@ class InspectorInterface:
         return sanitized
 
     def catalog(self, form):
-        commaize = lambda n: (str(n), (n>999) and commaize(n/1000)+ ",%03d" % (n%1000)   )[n>999]           
+        commaize = lambda n: (str(n),
+                              (n>999) and commaize(n/1000)+ ",%03d" % (n%1000) )[n>999]
         return "<br/>".join(map(lambda t: "%s -- %s" %(t[0],commaize(t[1])),
                                 self.rawCatalog()))
 
@@ -544,6 +561,7 @@ def main():
         jm = StandardJobManager("swamp.conf")
         #jm.startSlaveServer()
         jm.startTwistedServer()
+        jm.grimReap() # necessary to wakeup and kill threads.
 
 if __name__ == '__main__':
     main()
