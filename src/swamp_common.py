@@ -1,5 +1,5 @@
 
-# $Header: /cvsroot/nco/nco/src/ssdap/swamp_common.py,v 1.35 2007/08/13 17:07:11 wangd Exp $
+# $Id$
 # swamp_common.py - a module containing the parser and scheduler for SWAMP
 #  not meant to be used standalone.
 # 
@@ -11,6 +11,7 @@ This provides high level access to SWAMP parsing and scheduling functionality.
 """
 __author__ = "Daniel L. Wang <wangd@uci.edu>"
 #__all__ = ["Parser"] # I should fill this in when I understand it better
+SwampCoreVersion = "$Id$"
 
 # Python imports
 import cPickle as pickle
@@ -1673,6 +1674,7 @@ class SwampTask:
         self.scheduler = Scheduler(config, defExec, self._publishIfOutput)
         self.parser.commandHandler(self.scheduler.schedule)
         self.commandFactory = CommandFactory(self.config)
+        self.buildTime = time.time()
         self.fail = None
         try:
             self.parser.parseScript(script, self.commandFactory)
@@ -1785,21 +1787,27 @@ class SwampInterface:
 
         def run(self):
             # Consume one item
-            self.freeTaskCondition.acquire()
-            while not self.ready:
-                print "no tasks, so gonna wait"
-                if self.markedForDeath:
-                    self.freeTaskCondition.release()
-                    return
-                self.freeTaskCondition.wait()
-            self.runReadyTask()
-            self.freeTaskCondition.release()
-
+            while True:
+                self.freeTaskCondition.acquire()
+                while not self.ready:
+                    print "no tasks, so gonna wait"
+                    if self.markedForDeath:
+                        self.freeTaskCondition.release()
+                        return
+                    self.freeTaskCondition.wait()
+                    print "wakeup from notification"
+                    pass
+                self.runReadyTask()
+                self.freeTaskCondition.release()
+                pass
+            pass
         def acceptTask(self, task):
             # Produce one item
+            print "adding one task"
             self.freeTaskCondition.acquire()
             self.ready.append(task)
             self.freeTaskCondition.notify()
+            print "sent notification"
             self.freeTaskCondition.release()
 
         def acceptDeath(self):
@@ -1809,11 +1817,22 @@ class SwampInterface:
             self.freeTaskCondition.release()
             
         def runReadyTask(self):
+            """run the first ready task at the head of the list.
+            precondition:  Task list is locked (i.e. condition is acquired)
+                           There exists at least one ready job
+            postcondition: Task list is locked (i.e. condition is acquired)
+                           One job has been run from the top of the list.
+                           """
             # move top of readylist to running
             assert self.ready
+            print "running one task"
             self.running = self.ready.pop(0)
+            # release lock!
+            self.freeTaskCondition.release()
             # execute
             self.running.run()
+            # re-acquire lock to log termination
+            self.freeTaskCondition.acquire()
             # move running to done.
             self.done.append(self.running)
             self.running = None            
@@ -1871,6 +1890,10 @@ class SwampInterface:
 
         # want to return list of files + state + url if available
         return [(state, logname, url)]
+    def execSummary(self):
+        return (self.mainThread.running,
+                self.mainThread.ready,
+                self.mainThread.done)
 
     pass
 
