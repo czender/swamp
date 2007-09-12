@@ -5,7 +5,8 @@
 # This file is released under the GNU General Public License version 3 (GPLv3)
 # Copyright (c) 2007 Daniel L. Wang
 from swamp_common import *
-from swamp_config import Config 
+from swamp_config import Config
+
 import cPickle as pickle
 import logging
 import os
@@ -16,7 +17,7 @@ import twisted.web.resource as tResource
 import twisted.web.server as tServer
 import twisted.web.static as tStatic
 
-
+SwampSoapInterfaceVersion = "$Id$"
 log = logging.getLogger("SWAMP")
 
 class LaunchThread(threading.Thread):
@@ -287,14 +288,16 @@ class InspectorResource(tResource.Resource):
 
 class InspectorInterface:
     def __init__(self, config):
-        self.actions = {"rebuilddb": self.rebuildDb,
-                        "showdb": self.showDb,
+        self.actions = {#"rebuilddb": self.rebuildDb,
+                        #"showdb": self.showDb,
                         "catalog" : self.catalog,
                         "help": self.printHelp,
-                        "ls" : self.listFiles,
-                        "list" : self.listJobs,
+                        #"ls" : self.listFiles,
+                        "joblist" : self.listJobs,
                         "env" : self.showEnv,
-                        "filedb" : self.showFileDb }
+                        "filedb" : self.showFileDb,
+                        "sanitycheck" : self.sanityCheck
+                        }
         self.config = config
         self.endl = "<br/>"
         
@@ -346,26 +349,42 @@ class InspectorInterface:
         
         return "done with output"
     def showEnv(self, form):
-        """prints the cgi script's available env vars"""
-        print self.handyHeader()
+        """(debug)prints the available env vars"""
+        result = [ self.handyHeader()]
+        result.append("<pre>")
         for k in os.environ:
-            print "%-20s : %s" %(k,os.environ[k])
-        print "</pre>"
-        return "done printing env"
+            result.append( "%-20s : %s" %(k,os.environ[k]))
+        result.append("</pre>")
+        return self.endl.join(result)
 
     def listJobs(self, form):
+        """Get a list of the jobs/workflows tracked by the system"""
         donejobs = self.config.runtimeJobManager.discardedJobs
-        print donejobs
-        leftover = self.endl.join(map(lambda x:"%d -> %s" %(x[0], dir(x[1])), donejobs.items()))
-        
-        return "".join([ self.handyHeader(), self.endl,
-                         "running jobs", self.endl,
-                         str( self.config.runtimeJobManager.jobs),
-                         "discarded-->", self.endl,
-                         str( self.config.runtimeJobManager.discardedJobs),
-                         leftover])
+        def info(task):
+            if task:
+                return "Task with %d logical outs, submitted %s" % (
+                    len(task.logOuts), time.ctime(task.buildTime))
+            else:
+                return ""
+        def fixlist(items):
+            elems = map(lambda x:"%d -> %s" % (x[0], info(x[1])), items)
+            return self.endl.join(elems)
 
-    def osFind(self, *paths ):
+        donejobs = fixlist(donejobs.items())
+        runjobs = fixlist(self.config.runtimeJobManager.jobs.items())
+        
+        i = self.config.runtimeJobManager.swampInterface
+        officialreport = i.execSummary()
+        report = self.endl.join([info(officialreport[0]),
+                                 " ".join(map(info,officialreport[1])),
+                                 " ".join(map(info,officialreport[2]))])
+        return "".join([ self.handyHeader(), self.endl,
+                         "submitted jobs:", self.endl,
+                         runjobs, self.endl,
+                         "discarded:", self.endl,
+                         donejobs])
+
+    def _osFind(self, *paths ):
         """Roughly, an implementation of standard unix 'find'.
         Implementation borrowed from:
         http://www.python.org/search/hypermail/python-1994q2/0116.html
@@ -374,6 +393,7 @@ class InspectorInterface:
         expand = lambda name: os.path.expandvars(os.path.expanduser(name))
         def append( list, dirname, filelist ):
             DO_NOT_INCLUDE=set([".",".."])
+            filelist.sort()
             for filename in filelist:
                 if filename not in DO_NOT_INCLUDE:
                     filename = os.path.join( dirname, filename )
@@ -384,12 +404,17 @@ class InspectorInterface:
             os.path.walk( expand(pathname), append, list )
         return list
     
+    def sanityCheck(self, form):
+        """Check some internal data structures for consistency"""
+        versions = ["Swamp core version: %s" % SwampCoreVersion,
+                    "Swamp SOAP interface version: %s" % SwampSoapInterfaceVersion]
+        return self.endl.join([self.handyHeader()] + versions +
+                              [ "No checks implemented yet"])
 
-
-    def rawCatalog(self, root=""):
+    def _rawCatalog(self, root=""):
         prefix = self.config.execSourcePath
         topchildren = os.listdir(prefix)
-        files = self.osFind(prefix)
+        files = self._osFind(prefix)
         ncfiles = filter(lambda s: s.endswith(".nc") and s.startswith(prefix),
                          files)
         sanitized = map(lambda s: (s[len(prefix):], os.stat(s).st_size),
@@ -397,10 +422,30 @@ class InspectorInterface:
         return sanitized
 
     def catalog(self, form):
+        """Get a listing of the files available for SWAMP to read"""
         commaize = lambda n: (str(n),
                               (n>999) and commaize(n/1000)+ ",%03d" % (n%1000) )[n>999]
-        return "<br/>".join(map(lambda t: "%s -- %s" %(t[0],commaize(t[1])),
-                                self.rawCatalog()))
+        rawcat = self._rawCatalog()
+        makeitemline = lambda t: (os.path.split(t[0])[0],
+                                  "%s -- %s" %(t[0],commaize(t[1])))
+        itemlines = map(makeitemline, rawcat)
+
+        orgitemlines = []
+        xlt = string.maketrans("/%","__")
+        safename = lambda x: x.translate(xlt)
+        targetline = lambda x: "<a name=\"%s\"><font size=+1>%s</font></a>" % (safename(x), x)
+        dirlist = []
+        def insertptr(oldline, lines, dlist):
+            p = oldline[0]
+            if (not dlist) or (p != dlist[-1]):
+                lines.append(targetline(p))
+                dirlist.append(p)
+            lines.append(oldline[1])
+
+        map(lambda x: insertptr(x,orgitemlines,dirlist), itemlines)
+        dirstring = " ".join(map(lambda x: "<a href=\"#%s\">%s</a><br/>" %
+                                 (safename(x),x), dirlist))
+        return self.endl.join([self.handyHeader(), dirstring] + orgitemlines )
 
         
     
@@ -427,12 +472,17 @@ class InspectorInterface:
         
         return "done with output"
         
+    def complainLoudly(self):
+        """internal: print a nice error message if an unknown action
+        is requested"""
+        return self.endl.join([self.handyHeader(),
+                               "Sorry, I didn't understand your request."])
 
     def execute(self, action, form, errorfunc):
         if action in self.actions:
             return self.actions[action](form)
         else:
-            errorfunc()
+            return self.complainLoudly()
 
 class TwistedSoapSwampInterface(tSoap.SOAPPublisher):
     def __init__(self, jobManager):
