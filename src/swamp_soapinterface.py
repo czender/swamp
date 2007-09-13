@@ -4,14 +4,20 @@
 #
 # This file is released under the GNU General Public License version 3 (GPLv3)
 # Copyright (c) 2007 Daniel L. Wang
+
+# SWAMP imports
 from swamp_common import *
 from swamp_config import Config
+from swamp_transact import *
 
+# Standard Python imports
 import cPickle as pickle
 import logging
 import os
+import threading
+
+# (semi-) third-party imports
 import SOAPpy
-import threading 
 import twisted.web.soap as tSoap
 import twisted.web.resource as tResource
 import twisted.web.server as tServer
@@ -127,22 +133,25 @@ class StandardJobManager:
             time.sleep(0.2) # possible race
             if token not in self.jobs:
                 log.warning("token not ready after waiting.")
-                return None
+                return SwampTaskState.newState(token, "missing").packed()
         if isinstance(self.jobs[token], threading.Thread):
-            return None # token not even ready, arg fetch.
+            return SwampTaskState.newState(token, "submitted").packed()
+
         #log.debug("trying exec poll" + str(self.jobs) + str(token))
         # for now, if the interface is there,
         #things are complete/okay.
-
         if isinstance(self.jobs[token], SwampTask):
             task = self.jobs[token]
             r = task.result()
             if r == True:
-                return [0,""]
+                return SwampTaskState.newState(token, "finished").packed()
             elif r != None:
-                return [1, r]
-        else:
-            return None
+                return SwampTaskState.newState(token, "generic error",r).packed()
+            else:
+                return SwampTaskState.newState(token, "waiting").packed()
+        log.error("SOAP interface found weird object in self.jobs:" +
+                  "token(%d) has %s" %(token, str(self.jobs[token])) )
+        return SwampTaskState.newState(token, "system error").packed()
 
     def pollStateMany(self, tokenList):
         return map(self.pollState, tokenList)
