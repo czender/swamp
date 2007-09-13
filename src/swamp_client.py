@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # $Id$
 # $URL$
-# swamp_client.py
+#
+# swamp_client.py - A client interface to use with a swamp server.
 #
 # This file is part of the SWAMP project and is released under
 # the terms of the GNU General Public License version 3 (GPLv3)
@@ -18,6 +19,9 @@ import urllib
 
 # (semi-) third-party module imports
 import SOAPpy
+
+# SWAMP imports
+from swamp_transact import *
 
 
 class local:
@@ -132,51 +136,6 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         
         pass
 
-    def arguments(self, argv):
-        """Applies command-line arguments to configure the client for
-        its run.  Expects raw sys.argv or similar (argv[0] = script name)
-
-        precondition:  ?
-        postcondition: set a bunch of variables:
-          operation -- "run function" to call (or a list of them)
-          serverUrl -- valid url to connect to the server
-          
-        
-        """
-        # maintain the list of getopt arguments
-        opttuples = [("c:", "config=", self._handleConfigOption),
-                     ("h", "help", self._handleHelpOption),
-                     ("u:", "url=", self._handleUrlOption),
-                     ("t", "test", self._handleTestOption),
-                     ("", "backdoor", self._handleBackdoorOption),
-                     ("", "reset", self._handleResetOption)]
-
-        # build getopt structures
-        sopts = "".join(map(lambda t: t[0], opttuples))
-        lopts = map(lambda t: t[1], opttuples)
-        self.operation = [] # clear out operation queue
-        (args, leftover) = getopt.getopt(argv[1:], sopts, lopts)
-
-        # make a dict to handle options, mapping argument to operation
-        # filter out bad tuples (the null version when an option does not
-        # have both short and long forms)
-        odict = dict(filter(lambda t: t[0],
-                            map(lambda t: ('-' + t[0].rstrip(':'),
-                                           t[2]), opttuples)
-                            + map(lambda t: ('--' + t[1].rstrip('='),
-                                             t[2]), opttuples)))
-        map(lambda a: odict[a[0]](a[1]), args)  # handle all detected options
-        
-        # now, generate operations for each script file specified
-        map(lambda f: self._addOperation(lambda : self._processScript(f)),
-            leftover)
-
-        # for otherwise "action-less" invocations, print the help
-        # if it hasn't been printed.
-        if (not self.operation) and (not self.didHelpPrintout):
-            self._addOperation(lambda : self._handleHelpOption())
-        
-        pass
 
     def _addOperation(self, func):        
         self.operation.append(func)
@@ -238,22 +197,82 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         print "submitted", scriptfile
 
         ret = None
+        self._waitForScriptFinish(tok)
+        pass
+    
+    def _waitForScriptFinish(self, token):
+        server = SOAPpy.SOAPProxy(self.serverUrl)
+        lastreport = None
         while True:
-            ret = server.pollState(tok)
-            if ret is not None:
-                print "finish, code ", ret[0]
+            ret = server.pollState(token)
+            state = SwampTaskState.newFromPacked(ret)
+            if state.stable():
+                print "finish, code ", state.name()
                 break
+            else:
+                if state.name() != lastreport:
+                    lastreport = state.name()
+                    print "Task is in the (%d) %s state" %(state.state,
+                                                           lastreport)
+                    
             time.sleep(1)
             continue
-        if ret[0] != 0:
-            print "Execution error: ", ret[1]
+        if state.name() != "finished":
+            print "Execution error: ", state
             return
-        outUrls = server.pollOutputs(tok)
+        outUrls = server.pollOutputs(token)
         for u in outUrls:
             # simple fetch, since we are single-threaded.
             print "Fetching %s and writing to %s" % (u[1], u[0])
             urllib.urlretrieve(u[1], os.path.expanduser(u[0]))
-        server.discardFlow(tok) # cleanup afterwards, discard published files.
+        # cleanup afterwards, discard published files.
+        server.discardFlow(token) 
+        pass
+
+    def arguments(self, argv):
+        """Applies command-line arguments to configure the client for
+        its run.  Expects raw sys.argv or similar (argv[0] = script name)
+
+        precondition:  ?
+        postcondition: set a bunch of variables:
+          operation -- "run function" to call (or a list of them)
+          serverUrl -- valid url to connect to the server
+          
+        
+        """
+        # maintain the list of getopt arguments
+        opttuples = [("c:", "config=", self._handleConfigOption),
+                     ("h", "help", self._handleHelpOption),
+                     ("u:", "url=", self._handleUrlOption),
+                     ("t", "test", self._handleTestOption),
+                     ("", "backdoor", self._handleBackdoorOption),
+                     ("", "reset", self._handleResetOption)]
+
+        # build getopt structures
+        sopts = "".join(map(lambda t: t[0], opttuples))
+        lopts = map(lambda t: t[1], opttuples)
+        self.operation = [] # clear out operation queue
+        (args, leftover) = getopt.getopt(argv[1:], sopts, lopts)
+
+        # make a dict to handle options, mapping argument to operation
+        # filter out bad tuples (the null version when an option does not
+        # have both short and long forms)
+        odict = dict(filter(lambda t: t[0],
+                            map(lambda t: ('-' + t[0].rstrip(':'),
+                                           t[2]), opttuples)
+                            + map(lambda t: ('--' + t[1].rstrip('='),
+                                             t[2]), opttuples)))
+        map(lambda a: odict[a[0]](a[1]), args)  # handle all detected options
+        
+        # now, generate operations for each script file specified
+        map(lambda f: self._addOperation(lambda : self._processScript(f)),
+            leftover)
+
+        # for otherwise "action-less" invocations, print the help
+        # if it hasn't been printed.
+        if (not self.operation) and (not self.didHelpPrintout):
+            self._addOperation(lambda : self._handleHelpOption())
+        
         pass
 
     def run(self):
