@@ -199,26 +199,49 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         ret = None
         self._waitForScriptFinish(tok)
         pass
+
+    def _stringifyExtra(self, extra):
+        if isinstance(extra, dict):
+            if "commandCount" in extra and "executedCount" in extra:
+                return "Executed %d/%d" %(extra["executedCount"],
+                                          extra["commandCount"])
+        return str(extra)
     
     def _waitForScriptFinish(self, token):
         server = SOAPpy.SOAPProxy(self.serverUrl)
         lastreport = None
+        lastblip = 0
+        lastextra = None
         while True:
             ret = server.pollState(token)
             state = SwampTaskState.newFromPacked(ret)
             if state.stable():
-                print "finish, code ", state.name()
+                print "Task finished, code ", state.name()
                 break
             else:
                 if state.name() != lastreport:
                     lastreport = state.name()
                     print "Task is in the (%d) %s state" %(state.state,
-                                                           lastreport)
+                                                           lastreport) 
+                    if state.extra:
+                        lastextra = self._stringifyExtra(state.extra) 
+                        print "(", lastextra, ")"
+                else:
+                    lastblip += 1
+                    if state.extra:
+                        newextra = self._stringifyExtra(state.extra)
+                        if newextra != lastextra:
+                            lastextra = newextra
+                            print "(", newextra, ")"
+                    elif not(lastblip % 2):
+                        print ".",
                     
             time.sleep(1)
             continue
         if state.name() != "finished":
             print "Execution error: ", state
+            if state.extra:
+                print "--",state.extra
             return
         outUrls = server.pollOutputs(token)
         for u in outUrls:

@@ -38,13 +38,15 @@ class LaunchThread(threading.Thread):
         self.updateFunc(self) # put myself as placeholder
         log.info("Starting workflow execution")
         task = self.swampInterface.submit(self.script, self.filemap)
-        log.info("Finished workflow execution got id=%s" % task.taskId())
+        log.info("Admitted workflow: workflow id=%s" % task.taskId())
         # should update with an object that can be used to
         #query for task state.
         self.updateFunc(task) # update with real object
 
 class StandardJobManager:
     """StandardJobManager manages submitted tasks dispatched by this system.
+    It *should* only apply the presentation semantics and interface
+    layer, and should not manage queuing logic.
     """
     def __init__(self, cfgName=None):
         if cfgName:
@@ -148,7 +150,21 @@ class StandardJobManager:
             elif r != None:
                 return SwampTaskState.newState(token, "generic error",r).packed()
             else:
-                return SwampTaskState.newState(token, "waiting").packed()
+                # is the task running?
+                pos = self.swampInterface.queuePosition(task)
+                if pos >= 0:
+                    if pos == 0:
+                        msg = "Queued: Next in line"
+                    elif pos > 0:
+                        msg = "Queued: %d ahead in line" % pos
+                    return SwampTaskState.newState(token,
+                                                   "waiting",
+                                                   msg).packed()
+                extra = task.status()
+                return SwampTaskState.newState(token, "running",extra).packed()
+
+                                                   
+                          
         log.error("SOAP interface found weird object in self.jobs:" +
                   "token(%d) has %s" %(token, str(self.jobs[token])) )
         return SwampTaskState.newState(token, "system error").packed()

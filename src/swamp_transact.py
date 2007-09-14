@@ -24,6 +24,7 @@ __author__ = "Daniel L. Wang <wangd@uci.edu>"
 SwampTransactVersion = "$Id$"
 
 # Python imports
+import cPickle as pickle
 from itertools import *
 import base64
 
@@ -67,7 +68,9 @@ class SwampTaskState:
 
     def __str__(self):
         tup = SwampTaskState.state[self.state]
-        return "TaskState[%d] %d %s" % (self.token, self.state, tup[0])
+
+        return "TaskState[%d] %d %s (%s)" % (self.token, self.state,
+                                             tup[0], str(self.extra))
     
     def name(self):
         """return the name of the state"""
@@ -78,9 +81,7 @@ class SwampTaskState:
         resist mangling by the SOAPpy implemenation.  Python's pickle
         module creates binary strings which foul up SOAPpy.
         """
-        if isinstance(self.extra, str):
-            extra = base64.b64encode(self.extra)
-        elif self.extra:
+        if self.extra:
             extra = base64.b64encode(pickle.dumps(self.extra))
         else:
             extra = None
@@ -107,11 +108,10 @@ class SwampTaskState:
             return SwampTaskState(packed[0], packed[1], None)
 
         assert isinstance(extra, str) # should have been packed
-
         # When the time comes, put something here to unpickle
         # the packed base64. Otherwise, we assume it's a string
         return SwampTaskState(packed[0], packed[1],
-                              base64.b64decode(extra))
+                              pickle.loads(base64.b64decode(extra)))
     @staticmethod
     def classSanity():
         """Test consistency in code and data logic.
@@ -121,8 +121,16 @@ class SwampTaskState:
         """
         waiting = SwampTaskState.newState(1,"waiting")
         waiting2 = SwampTaskState.newFromPacked(waiting.packed())
-        return str(waiting) == str(waiting2)
+        running = SwampTaskState.newState(1,"running", {"hello" : "world",
+                                                        "foo" : 1})
+        running2 = SwampTaskState.newFromPacked(running.packed())
+
+        print "No exceptions while running"
+        print running,running2
+        return str(waiting) == str(waiting2) and str(running) == str(running2)
 
         
     pass
 
+if __name__ == "__main__":
+    assert SwampTaskState.classSanity()

@@ -114,7 +114,7 @@ class VariableParser:
         varValue = (self.dblQuoted
                     | self.sglQuoted
                     | self.backtickString
-                    | Word(alphanums+"-_/")
+                    | Word(alphanums+"-_/.")
                     | CharsNotIn(" `")
                     )
     
@@ -129,7 +129,7 @@ class VariableParser:
             self.varMap[lhs] = rhs
             #print "assigning %s = %s" % (lhs,rhs)
 
-            logging.debug("assigning %s = %s" % (lhs,rhs))
+            log.debug("assigning %s = %s" % (lhs,rhs))
             return
 
         varDefinition.setParseAction(lambda s,loc,toks:
@@ -155,8 +155,10 @@ class VariableParser:
         if argv[0] == "export":
             return isAssign(argv[1:])
         return isAssign(argv)
+
     def isAssign(argv):
         pass
+
     def makeCalcGrammar(self):
         # from:
         # http://pyparsing.wikispaces.com/space/showimage/simpleArith.py
@@ -773,7 +775,6 @@ class Parser:
         self.handlerDefaults()
         self.handleFunc = None
         self.commands = []
-
         self.variableParser = VariableParser(self._variables)
         self._context = Parser.BaseContext(self)
         self._rootContext = self._context
@@ -881,7 +882,7 @@ class Parser:
             command.original = original
         
         if not command:
-            logging.debug(" ".join(["reject:", str(len(argv)), str(argv)]))
+            log.debug(" ".join(["reject:", str(len(argv)), str(argv)]))
         elif self.handleFunc is not None:
             self.handleFunc(command)
         return command
@@ -1325,6 +1326,7 @@ class Scheduler:
         self.taskId = self.makeTaskId()
         self.executor = executor
         self.cmdList = []
+        self.cmdsFinished = []
         self.fileLocations = {}
         self._graduateHook = graduateHook
         self.result = None # result is True on success, or a string/other-non-boolean on failure.
@@ -1386,13 +1388,19 @@ class Scheduler:
         if self.transaction != None:
             self.transaction.finish()
         pass
-
+    
     def graduateHook(self, hook):
         """hook is a unary void function that accepts a graduating command
         as a parameter.  Invocation occurs sometime after the command
         commits its output file to disk."""
         self._graduateHook = hook
         pass
+
+    def _graduateAction(self, cmd):
+        self.cmdsFinished.append(cmd)
+        return self._graduateHook(cmd)
+
+    
     def executeSerialAll(self):
         def run(cmd):
             if self.executor:
@@ -1411,7 +1419,7 @@ class Scheduler:
             executors = [self.executor]
         self.pd = ParallelDispatcher(self.config, executors)
         self.fileLocations = self.pd.dispatchAll(self.cmdList,
-                                                 self._graduateHook)
+                                                 self._graduateAction)
         self.result = self.pd.result
         pass
     pass # end of class Scheduler
@@ -1735,11 +1743,18 @@ class SwampTask:
             log.debug("refusing to dispatch: " + str(self.result()))
             pass
         pass
+
     def result(self):
         if self.fail:
             return self.fail
         else:
             return self.scheduler.result
+
+    def status(self):
+        s = self.scheduler
+        result = {"executedCount" : len(s.cmdsFinished),
+                  "commandCount" : len(s.cmdList)}
+        return result
 
     def selfDestruct(self):
         log.debug("Task %d is self-destructing" %(str(self.scheduler.taskId)))
@@ -1836,7 +1851,20 @@ class SwampInterface:
             # move running to done.
             self.done.append(self.running)
             self.running = None            
-        
+
+        def queuePos(self, task):
+            """Check the position of a task in the queue.
+            'task' should be a SwampTask object.
+
+            @return an integer representing the count of jobs ahead
+            of it in the queue, or -1 if it is not on the queue
+            """
+            try:
+                return self.ready.index(task)
+            except ValueError:
+                return -1
+            
+        pass # end of class MainThread
 
     def startLoop(self):
         self.mainThread.start() 
@@ -1856,8 +1884,8 @@ class SwampInterface:
         self.mainThread.acceptTask(t)
         return t
 
-
-
+    
+    
     def fileStatus(self, logicalname):
         """return state of file by name"""
 
@@ -1890,6 +1918,10 @@ class SwampInterface:
 
         # want to return list of files + state + url if available
         return [(state, logname, url)]
+
+    def queuePosition(self, task):
+        return self.mainThread.queuePos(task)
+    
     def execSummary(self):
         return (self.mainThread.running,
                 self.mainThread.ready,
@@ -1986,13 +2018,18 @@ class LocalExecutor:
             return self.finished[token]
         if token in self.running:
             pid = self.running[token]
-            (pid2, status) = os.waitpid(pid,os.WNOHANG)
-            if (pid2 != 0) and os.WIFEXITED(status):
-                code = os.WEXITSTATUS(status)
-                self._graduate(token, code)
-                return code
-            else:
-                return None
+            try:
+                (pid2, status) = os.waitpid(pid,os.WNOHANG)
+                if (pid2 != 0) and os.WIFEXITED(status):
+                    code = os.WEXITSTATUS(status)
+                    self._graduate(token, code)
+                    return code
+                else:
+                    return None
+            except OSError:
+                self._graduate(token, -1) # Wait fault: report error
+                return -1
+                
         else:
             raise StandardError("Tried to poll non-running job")
 
