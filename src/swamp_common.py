@@ -1319,12 +1319,11 @@ class Parser:
     pass
 
 class Scheduler:
-    def __init__(self, config, executor=None, graduateHook=lambda x: None):
+    def __init__(self, config, graduateHook=lambda x: None):
         self.config = config
         self.transaction = None
         self.env = {}
         self.taskId = self.makeTaskId()
-        self.executor = executor
         self.cmdList = []
         self.cmdsFinished = []
         self.fileLocations = {}
@@ -1401,11 +1400,11 @@ class Scheduler:
         return self._graduateHook(cmd)
 
     
-    def executeSerialAll(self):
+    def executeSerialAll(self, executor=None):
         def run(cmd):
-            if self.executor:
-                tok = self.executor.launch(cmd)
-                retcode = self.executor.join(tok)
+            if executor:
+                tok = executor.launch(cmd)
+                retcode = executor.join(tok)
                 return retcode
         for c in self.cmdList:
             ret = run(c)
@@ -1414,9 +1413,11 @@ class Scheduler:
                 log.error("error running command %s" % (c))
                 self.result = "ret was %s, error running %s" %(str(ret), c)
                 break
+
     def executeParallelAll(self, executors=None):
-        if executors is None:
-            executors = [self.executor]
+        if not executors:
+            log.error("Missing executor for parallel execution. Skipping.")
+            return
         self.pd = ParallelDispatcher(self.config, executors)
         self.fileLocations = self.pd.dispatchAll(self.cmdList,
                                                  self._graduateAction)
@@ -1675,28 +1676,54 @@ class ParallelDispatcher:
     pass # end class ParallelDispatcher
 
 class SwampTask:
-    def __init__(self, defExec, remote, config, script, outMap):
+    """Contains objects necessary to manage *ONE* script's running context"""
+    def __init__(self, remote, config, script, outMap,
+                 customizer=lambda p,s,cf: True):
+        """
+    remote -- a list of executors where jobs can be sent.
+    config -- a configuration object, e.g. the global config object
+    script -- the script to be executed
+    outMap -- a filemap object to be used to map between logical and
+    physical filenames
+
+    customizer -- a function accepting a parser instance, scheduler
+    instance, and a command factory instance.  This function will be
+    called after construction (but before parsing) to apply any
+    customization desired or necessary for an environment.
+    """
         self.config = config
         self.parser = Parser()
         #FIXME: need to define publishIfOutput
-        self.scheduler = Scheduler(config, defExec, self._publishIfOutput)
+        self.scheduler = Scheduler(config, self._publishIfOutput)
         self.parser.commandHandler(self.scheduler.schedule)
         self.commandFactory = CommandFactory(self.config)
         self.buildTime = time.time()
         self.fail = None
+        if not customizer(self.parser,
+                          self.scheduler,
+                          self.commandFactory):
+            self.fail = "Error applying frontend customization."
+            return
+
+        self.remoteExec = remote
+        self.outMap = LinkedMap(outMap, self.taskId())
         try:
-            self.parser.parseScript(script, self.commandFactory)
-            self.scheduler.finish()
-            self.remoteExec = remote
-            self.scrAndLogOuts = self.commandFactory.realOuts()
-            self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
-            log.debug("outs are " + str(self.scrAndLogOuts))
-            self.outMap = LinkedMap(outMap, self.taskId())
+            self._parseScript(script)
         except StandardError, e:
             self.fail = str((e,e.__doc__, str(e)))
-        
         pass
-    
+
+    def _parseScript(self, script):
+        log.debug("Starting parse")
+        self.parser.parseScript(script, self.commandFactory)
+        log.debug("Finish parse")
+        self.scheduler.finish()
+        log.debug("finish scheduler prep")
+        self.scrAndLogOuts = self.commandFactory.realOuts()
+        self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
+        log.debug("outs are " + str(self.scrAndLogOuts))
+        pass
+
     def _publishIfOutput(self, obj):
         """object can be either a logical filename or a command,
         or a list of either"""
@@ -1775,18 +1802,20 @@ class SwampInterface:
         self.config.dumpSettings(log, logging.DEBUG)
         
         if executor:
-            self.executor = executor
+            self.defaultExecutor = executor
         else:
-            self.executor = FakeExecutor()
+            self.defaultExecutor = FakeExecutor()
 
         if config.execSlaveNodes > 0:
             self.remote = []
             for i in range(config.execSlaveNodes):
                 s = config.slave[i]
                 self.remote.append(RemoteExecutor(s[0], s[1]))
+            self.executor = self.remote
         else:
-            self.remote = None
+            self.executor = [self.defaultExecutor]
         self.mainThread = SwampInterface.MainThread(self)
+        self.variablePreload = {}
         pass
 
     class MainThread(threading.Thread):
@@ -1878,8 +1907,8 @@ class SwampInterface:
         self.mainThread.acceptDeath()
 
     def submit(self, script, outputMapper):
-        t = SwampTask(self.executor, self.remote, self.config,
-                      script, outputMapper)
+        t = SwampTask(self.executor, self.config,
+                      script, outputMapper, self._customizer)
         log.info("after parse: " + time.ctime())
         self.mainThread.acceptTask(t)
         return t
@@ -1926,6 +1955,15 @@ class SwampInterface:
         return (self.mainThread.running,
                 self.mainThread.ready,
                 self.mainThread.done)
+
+    def updateVariablePreload(self, newVars):
+        self.variablePreload.update(newVars)
+        return 
+
+    def _customizer(self, parser, scheduler, commandFactory):
+        if len(self.variablePreload) > 0:
+            parser.updateVariables(self.variablePreload)
+        return True
 
     pass
 

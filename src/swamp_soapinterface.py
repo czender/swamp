@@ -65,12 +65,21 @@ class StandardJobManager:
         self.resultExportPref = self.exportPrefix + "/"
 
         self.swampInterface = SwampInterface(self.config, le)
+        self._setupVariablePreload(self.swampInterface)
         self.swampInterface.startLoop()
         self.token = 0
         self.tokenLock = threading.Lock()
         self.jobs = {}
         self.discardedJobs = {}
         pass
+
+    def _setupVariablePreload(self, interface):
+        interface.updateVariablePreload({
+            "SWAMPVERSION" : "0.1+",
+            "SHELL" : "swamp",
+            "SWAMPHOSTNAME" : self.config.serverHostname,
+            })
+        return
 
     def reset(self):
         # Clean up trash from before:
@@ -258,7 +267,11 @@ class StandardJobManager:
     pass # end class StandardJobManager
 
 class ScriptContext:
-    """Contains objects necessary to manage *ONE* script's running context"""
+    """Contains objects necessary to manage *ONE* script's running context.
+    ***This isn't really needed anymore.  Verify that we don't need
+    any logic or ideas from here, and then delete this class.
+    """
+    
     def __init__(self, config):
         self.config = config
 
