@@ -139,25 +139,16 @@ class StandardJobManager:
         #launchthread.join()
         return 
 
-    def pollState(self, token):
-        if token not in self.jobs:
-            time.sleep(0.2) # possible race
-            if token not in self.jobs:
-                log.warning("token not ready after waiting.")
-                return SwampTaskState.newState(token, "missing").packed()
-        if isinstance(self.jobs[token], threading.Thread):
-            return SwampTaskState.newState(token, "submitted").packed()
-
-        #log.debug("trying exec poll" + str(self.jobs) + str(token))
-        # for now, if the interface is there,
-        #things are complete/okay.
-        if isinstance(self.jobs[token], SwampTask):
-            task = self.jobs[token]
+    def taskStateObject(self, task):
+        token = -1 # use dummy token for now.
+        if isinstance(task, threading.Thread):
+            return SwampTaskState.newState(token, "submitted")
+        if isinstance(task, SwampTask):
             r = task.result()
             if r == True:
-                return SwampTaskState.newState(token, "finished").packed()
+                return SwampTaskState.newState(token, "finished")
             elif r != None:
-                return SwampTaskState.newState(token, "generic error",r).packed()
+                return SwampTaskState.newState(token, "generic error",r)
             else:
                 # is the task running?
                 pos = self.swampInterface.queuePosition(task)
@@ -166,17 +157,25 @@ class StandardJobManager:
                         msg = "Queued: Next in line"
                     elif pos > 0:
                         msg = "Queued: %d ahead in line" % pos
-                    return SwampTaskState.newState(token,
-                                                   "waiting",
-                                                   msg).packed()
+                    return SwampTaskState.newState(token, "waiting", msg)
                 extra = task.status()
-                return SwampTaskState.newState(token, "running",extra).packed()
+                return SwampTaskState.newState(token, "running",extra)
+        return None
 
-                                                   
-                          
-        log.error("SOAP interface found weird object in self.jobs:" +
-                  "token(%d) has %s" %(token, str(self.jobs[token])) )
-        return SwampTaskState.newState(token, "system error").packed()
+    def pollState(self, token):
+        if token not in self.jobs:
+            time.sleep(0.2) # possible race
+            if token not in self.jobs:
+                log.warning("token not ready after waiting.")
+                return SwampTaskState.newState(token, "missing").packed()
+        stateObject = self.taskStateObject(self.jobs[token])
+        stateObject.token = token
+        if not stateObject:
+            log.error("SOAP interface found weird object in self.jobs:" +
+                      "token(%d) has %s" %(token, str(self.jobs[token])) )
+            return SwampTaskState.newState(token, "system error").packed()
+        else:
+            return stateObject.packed()
 
     def pollStateMany(self, tokenList):
         return map(self.pollState, tokenList)
@@ -339,6 +338,7 @@ class InspectorInterface:
         self.config = config
         self.endl = "<br/>"
         
+        
     def buildUrl(self, action):
         return  "http://%s:%d/%s?action=%s" % (self.config.serverHostname,
                                         self.config.serverPort,
@@ -363,6 +363,7 @@ class InspectorInterface:
         swamp_dbutil.buildTables(dbfilename)
         
         return "Done rebuilding db"
+
     def showDb(self,form):
         """prints the db state"""
         import swamp_dbutil
@@ -370,12 +371,14 @@ class InspectorInterface:
         swamp_dbutil.quickShow(dbfilename)
         
         return "done with output"
+
     def showFileDb(self, form):
         """prints the filestate in the db"""
         import swamp_dbutil
         print self.handyHeader()
         swamp_dbutil.fileShow(dbfilename)
         return "done with output"
+
     def printHelp(self,form):
         """prints a brief help message showing available commands"""
         r = self.handyHeader()
@@ -395,13 +398,17 @@ class InspectorInterface:
         result.append("</pre>")
         return self.endl.join(result)
 
+
     def listJobs(self, form):
         """Get a list of the jobs/workflows tracked by the system"""
         donejobs = self.config.runtimeJobManager.discardedJobs
         def info(task):
             if task:
-                return "Task with %d logical outs, submitted %s" % (
-                    len(task.logOuts), time.ctime(task.buildTime))
+                state = self.config.runtimeJobManager.taskStateObject(task)
+                
+                return "Task with %d logical outs, submitted %s : %s (%s)" % (
+                    len(task.logOuts), time.ctime(task.buildTime),
+                    state.name(), str(state.extra))
             else:
                 return ""
         def fixlist(items):

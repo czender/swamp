@@ -1,6 +1,6 @@
 #!/usr/bin/python
-# $Id: swamp_client.py 7 2007-08-28 23:09:31Z daniel2196 $
-# $URL: https://swamp.googlecode.com/svn/trunk/src/swamp_client.py $
+# $Id$
+# $URL$
 #
 # swamp_transact.py - (user/)client-server transaction module
 #
@@ -68,7 +68,7 @@ class SwampTaskState:
 
     def __str__(self):
         tup = SwampTaskState.state[self.state]
-
+            
         return "TaskState[%d] %d %s (%s)" % (self.token, self.state,
                                              tup[0], str(self.extra))
     

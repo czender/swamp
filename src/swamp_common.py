@@ -1834,12 +1834,10 @@ class SwampInterface:
             while True:
                 self.freeTaskCondition.acquire()
                 while not self.ready:
-                    print "no tasks, so gonna wait"
                     if self.markedForDeath:
                         self.freeTaskCondition.release()
                         return
                     self.freeTaskCondition.wait()
-                    print "wakeup from notification"
                     pass
                 self.runReadyTask()
                 self.freeTaskCondition.release()
@@ -1847,11 +1845,9 @@ class SwampInterface:
             pass
         def acceptTask(self, task):
             # Produce one item
-            print "adding one task"
             self.freeTaskCondition.acquire()
             self.ready.append(task)
             self.freeTaskCondition.notify()
-            print "sent notification"
             self.freeTaskCondition.release()
 
         def acceptDeath(self):
@@ -1869,7 +1865,8 @@ class SwampInterface:
                            """
             # move top of readylist to running
             assert self.ready
-            print "running one task"
+            log.debug("running one task")
+
             self.running = self.ready.pop(0)
             # release lock!
             self.freeTaskCondition.release()
