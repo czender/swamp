@@ -120,13 +120,6 @@ class StandardJobManager:
             return "".join(tb_list)
         pass
         
-    def discardFlow(self, token):
-        task = self.jobs[token]
-        task.outMap.cleanPhysicals()
-        self.discardedJobs[token] = self.jobs.pop(token)
-        log.debug("discarding for token %d" %(token))
-        pass
-
     def _updateToken(self, token, etoken):
         self.jobs[token] = etoken
         
@@ -200,7 +193,7 @@ class StandardJobManager:
         log.debug("++"+f +self.config.execResultPath)
         relative = f.split(self.config.execResultPath + os.sep, 1)
         if len(relative) < 2:
-            log.info("Got request for %s which is not available")
+            log.info("Got request for %s which is not available"%f)
             return self.resultExportPref
         else:
             return self.resultExportPref + relative[1]
@@ -209,12 +202,12 @@ class StandardJobManager:
         assert token in self.jobs
         task = self.jobs[token]
         outs = task.scrAndLogOuts
-        log.debug(str(outs))
-
         outUrls = map(lambda f: (f[0], self.actualToPub( # make url from file
             task.outMap.mapReadFile(f[1]))), # find output localfile
                        outs) #start from logical outs.
-        log.debug(str(outUrls))
+
+        log.debug("polloutputs: outs "+str(outs))
+        log.debug("polloutputs: outUrls "+str(outUrls))
 
         return outUrls
 
@@ -228,6 +221,13 @@ class StandardJobManager:
         for i in range(len(fList)):
             self.fileMapper.discardLogical(fList[i])
         #map(self.fileMapper.discardLogical, fList)
+
+    def discardFlow(self, token):
+        task = self.jobs[token]
+        task.outMap.cleanPhysicals()
+        self.discardedJobs[token] = self.jobs.pop(token)
+        log.debug("discarding for token %d" %(token))
+        pass
 
     def startSlaveServer(self):
         #SOAPpy.Config.debug =1
@@ -547,67 +547,6 @@ class TwistedSoapSwampInterface(tSoap.SOAPPublisher):
     def soap_pyInterface(self, cmdline): # huge security hole for debugging
         return self.jobManager.pyInterface(cmdline)
 
-class Hello(tResource.Resource):
-    def getChild(self, name, request):
-        if name == '':
-            return self
-        return tResource.Resource.getChild(
-            self, name, request)
-
-    def render_GET(self, request):
-        return """<html>
-      Hello, world! I am located at %r.  Request contains: %s
-    </html>""" % (request.prepath, dir(request) )
-    def render_POST(self, request):
-        magictoken = "56bnghty56" #make this site-configurable
-        request.args["userfile"]
-        return """<html>
-      Hello, world! I am located at %r.  Request contains: %s .
-      <BR/>
-      I'm using the POST path.
-
-      Your headers were %s
-
-      Your args were %s
-
-      Your content was %d bytes long
-    </html>""" % (request.prepath, type(request), request.getAllHeaders(),
-                  request.args, len(request.content.getvalue()))
-        
-
-
-class SwampExtInterface:
-    
-    def submitScript(self, script):
-        """spawn a thread to get things started, assign a task id,
-        and return it."""
-        sc = ScriptContext(self.config)
-        sc.addScript(script)
-        taskid = sc.id()
-        self.forkOff(sc)
-        return taskid
-
-    def submitTree(self, parsedFlow):
-        """accept an already parsed, disambiguated, DAG workflow,
-        and execute it"""
-        sc = ScriptContext(self.config)
-        sc.addTree(script)
-        taskid = sc.id()
-        self.forkOff(sc)
-        return taskid
-
-    
-    def retrieveResults(self, taskid):
-        """return a list of filenames and urls"""
-        pass
-    def discard(self, taskid):
-        """free all resources associated with this taskid"""
-        # this probably kills a job in progress.
-        pass
-        
-        pass
-    pass # end class SwampExtInterface
-    
 
 def selfTest():
     pass

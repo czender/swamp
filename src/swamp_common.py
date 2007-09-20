@@ -1603,7 +1603,7 @@ class ParallelDispatcher:
 
             #self._publishFiles(filter(lambda o: self.isOutput(o),
             #                         cmd.outputs))
-            execs[0].actual[cmd.outputs[0]] # FIXME: can I delete this?
+            #execs[0].actual[cmd.outputs[0]] # FIXME: can I delete this?
             # hardcoded for now.
 
             # call this to migrate files to final resting places.
@@ -1668,6 +1668,7 @@ class ParallelDispatcher:
             continue # redundant, but safe
         # If we got here, we're finished.
         self.result = True
+        #log.debug("parallel dispatcher finish, with fileloc: " + self.fileLoc)
         pass # end def dispatchAll
 
     def earlyStart(self, cmdlist):
@@ -1733,6 +1734,7 @@ class SwampTask:
             log.debug("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
             pass
+        log.debug("publishHook: obj is " + str(obj))
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)
         log.debug("filtered is %s" %(str(files)))
@@ -1750,7 +1752,10 @@ class SwampTask:
             target = t[2]
             if isRemote(actual):
                 #download, then add to local map (in db?)
-                log.debug("Error, not doing actual download right now.")
+                #log.debug("Download start %s -> %s" % (actual, target))
+                urllib.urlretrieve(actual, target)
+                #Don't forget to discard.
+                log.debug("Fetch-published "+actual)
             else: #it's local!
                 # this will break if we request a read on the file
                 #
@@ -1758,7 +1763,7 @@ class SwampTask:
                 log.debug("start file move")
                 shutil.move(actual, target)
                 # FIXME: ping the new mapper so that it's aware of the file.
-                log.debug("end file move.")
+                log.debug("Published " + actual)
         pass
     def taskId(self):
         return self.scheduler.taskId
@@ -2231,6 +2236,7 @@ class RemoteExecutor:
         self.sleepTime = 0.2
         self.actual = {}
         self.pollCache = []
+        self.cmds = {}
         pass
 
     def busy(self):
@@ -2245,6 +2251,7 @@ class RemoteExecutor:
         remoteToken = self.rpc.slaveExec(cmd.pickleNoRef())
         self.token += 1        
         self.running[self.token] = remoteToken
+        self.cmds[self.token] = cmd  # save until graduation                
         return self.token
 
     def discard(self, token):
@@ -2326,11 +2333,16 @@ class RemoteExecutor:
 
     def _graduate(self, token, retcode):
         rToken = self.running.pop(token)
+        cmd = self.cmds.pop(token)
         self.finished[token] = retcode
-        outputs = self.rpc.actualOuts(rToken)
+        #outputs = self.rpc.actualOuts(rToken)
+        outputs = self.rpc.pollOutputs(rToken)
+        # where do i keep my commands?
+        cmd.actualOutputs = []
         log.debug("adding %s from %s" % (str(outputs), str(rToken)))
         for x in outputs:
             self._addFinishOutput(x[0],x[1])
+            cmd.actualOutputs.append((x[0],x[1]))
 
     def _waitForFinish(self, token):
         """helper function"""
@@ -2418,7 +2430,7 @@ class FileMapper:
         p = self.physical.pop(f)
         if os.access(p, os.F_OK):
             os.unlink(p)
-            log.debug("Unlink OK: %s" %(f))
+            log.debug("Unlink OK: %s (%s)" %(f,p))
         self.logical.pop(p)
     
     def cleanPhysicals(self):
@@ -2463,6 +2475,7 @@ class LinkedMap(FileMapper):
 
     def discardLogical(self, f):
         if f in self.private:
+            log.debug( "linked remove"+str(f))
             self.private.remove(f)
             return self.parent.discardLogical(self.pref + f)
         else:

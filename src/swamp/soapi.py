@@ -1,37 +1,49 @@
-# $Header: /cvsroot/nco/nco/src/ssdap/swamp_soapslave.py,v 1.10 2007/05/18 00:46:26 wangd Exp $
-# Copyright (c) 2007 Daniel L. Wang
-from swamp_common import *
-from swamp_config import Config 
+# $Id$
+
+"""
+soapi - Contains core logic for swamp's SOAP interface.
+
+ Requires twisted.web http://twistedmatrix.com/trac/wiki/TwistedWeb
+
+"""
+# Copyright (c) 2007 Daniel Wang
+# This file is part of SWAMP.
+# SWAMP is released under the GNU General Public License version 3 (GPLv3)
+
+# standard Python imports
 import cPickle as pickle
 import logging
 import os
-import SOAPpy
 import threading 
+
+# twisted imports
 import twisted.web.soap as tSoap
 import twisted.web.resource as tResource
 import twisted.web.server as tServer
 import twisted.web.static as tStatic
 
-log = logging.getLogger("SWAMP")
+# SWAMP imports 
+from swamp_common import *
+from swamp_config import Config 
+
 
 class LaunchThread(threading.Thread):
-    def __init__(self, executor, cmd, updateFunc):
-        threading.Thread.__init__(self) 
-        self.executor = executor
-        self.cmd = cmd
+    def __init__(self, launchFunc, updateFunc):
+        threading.Thread.__init__(self)
+        self.launchFunc = launchFunc
         self.updateFunc = updateFunc
-        pass
+        
     def run(self):
         self.updateFunc(self) # put myself as placeholder
-        etoken = self.executor.launch(self.cmd)
-        self.updateFunc(etoken) # update with real token
+        self.updateFunc(self.launchFunc()) # update with real token
 
     
-class SimpleJobManager:
-    """SimpleJobManager manages slave tasks run on this system.
+class JobManager:
+    """JobManager manages slave tasks run on this system.
     We will want to add contexts so that different tasks do not collide in
     files, but it's not needed right now for benchmarking, and will
     complicate debugging"""
+        
     def __init__(self, cfgName=None):
         if cfgName:
             self.config = Config(cfgName)
@@ -54,7 +66,7 @@ class SimpleJobManager:
                                      self.config.execBulkPath)
         self.scratchSub = "s"
         self.bulkSub = "b"
-        
+       
         self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
                                        self.fileMapper)
 
@@ -65,7 +77,17 @@ class SimpleJobManager:
         self.bulkExportPref = self.exportPrefix + self.bulkSub + "/"
         self.token = 0
         self.tokenLock = threading.Lock()
+        self.publishedFuncs = [self.reset, self.slaveExec,
+                               self.pollState, self.pollStateMany,
+                               self.pollOutputs,
+                               self.discardFile, self.discardFiles,
+                               self.ping
+                               ]
+        self.publishedPaths = [(self.config.slavePubPath+self.scratchSub, self.config.execScratchPath),
+                               (self.config.slavePubPath+self.bulkSub, self.config.execBulkPath)]
+                               
         pass
+
     def reset(self):
         # Clean up trash from before:
         # - For now, don't worry about checking jobs still in progress
@@ -89,12 +111,14 @@ class SimpleJobManager:
     def _updateToken(self, token, etoken):
         self.jobs[token] = etoken
         
+
     def _threadedLaunch(self, cmd, token):
-        launchthread = LaunchThread(self.localExec, cmd,
-                                    lambda et: self._updateToken(token, et))
-        launchthread.start()
-        #launchthread.join()
-        return 
+
+        launch = lambda : self.localExec.launch(cmd)
+        update = lambda et: self._updateToken(token, et)
+        thread = LaunchThread(launch, update)
+        thread.start()
+        return
 
     def pollState(self, token):
         if token not in self.jobs:
@@ -127,9 +151,10 @@ class SimpleJobManager:
         outs = self.localExec.actualOuts(self.jobs[token])
         outs += self.localExec.fetchedSrcs(self.jobs[token])
         log.debug("outs is " + str(outs) + " for " + str(token))
-        return map(lambda t: (t[0], self.actualToPub(t[1])), outs)
-        #map(lambda f: (f,self.actualToPub(f)), outs) 
-        #return outs
+        l = map(lambda t: (t[0], self.actualToPub(t[1])), outs)
+        log.debug("also outs is " + str(l))
+        return l
+
 
     def discardFile(self, f):
         log.debug("Discarding "+str(f))
@@ -142,91 +167,100 @@ class SimpleJobManager:
             self.fileMapper.discardLogical(fList[i])
         #map(self.fileMapper.discardLogical, fList)
 
-    def startSlaveServer(self):
-        #SOAPpy.Config.debug =1
-    
-        server = SOAPpy.SOAPServer(("localhost", self.config.slavePort))
-        server.registerFunction(self.slaveExec)
-        server.registerFunction(self.pollState)
-        server.registerFunction(self.pollStateMany)
-        server.registerFunction(self.pollOutputs)
-        server.registerFunction(self.reset)
-        server.registerFunction(self.discardFile)
-        server.registerFunction(self.discardFiles)
-        server.serve_forever()
-        pass
+    def ping(self):
+        return "PONG %f" %time.time()
 
-    def startTwistedSlaveServer(self):
-        from twisted.internet import reactor
-        root = tResource.Resource()
-        scratchFileRes = tStatic.File(self.config.execScratchPath)
-        bulkFileRes = tStatic.File(self.config.execBulkPath)
-        tStatic.loadMimeTypes() # load from /etc/mime.types
-        root.putChild(self.config.slavePubPath+self.scratchSub, scratchFileRes)
-        root.putChild(self.config.slavePubPath+self.bulkSub, bulkFileRes)
-        root.putChild(self.config.slaveSoapPath, TwistedSoapWrapper(self))
-        reactor.listenTCP(self.config.slavePort, tServer.Site(root))
-        log.debug("starting Twisted soap slave")
-        reactor.run()
-        pass
+    def listenTwisted(self):
+        s = Instance((self.config.slaveHostname,
+                      self.config.slavePort,
+                      self.config.slaveSoapPath), 
+                     self.publishedPaths,
+                     self.publishedFuncs)
+        s.listenTwisted()
+        
     pass # end class SimpleJobManager
 
-class TwistedSoapWrapper(tSoap.SOAPPublisher):
-    def __init__(self, jobManager):
-        self.jobManager = jobManager
-    def soap_reset(self):
-        return self.jobManager.reset()
-    def soap_slaveExec(self, pickled):
-        return self.jobManager.slaveExec(pickled)
-    def soap_pollState(self, token):
-        return self.jobManager.pollState(token)
-    def soap_pollStateMany(self, tokenList):
-        return self.jobManager.pollStateMany(tokenList)
-    def soap_pollOutputs(self, token):
-        return self.jobManager.pollOutputs(token)
-    def soap_discardFile(self, file):
-        return self.jobManager.discardFile(file)
-    def soap_discardFiles(self, file):
-        return self.jobManager.discardFiles(file)
+class Instance:
+    
+    def __init__(self, hostPortPath, staticPaths, funcExports):
+        self.soapHost = hostPortPath[0]
+        self.soapPort = hostPortPath[1]
+        self.soapPath = hostPortPath[2]
+
+        self.staticPaths = staticPaths
+        self.funcExports = funcExports
+        self.url = "http://%s:%d/%s" % hostPortPath
+
+    def _makeTwistedWrapper(self, exp):
+        """_makeTwistedWrapper
+        -- makes an object that exports a list of functions
+        exp -- a list of functions (i.e. [self.doSomething, self.reset])
+        """
+        class WrapperTemplate(tSoap.SOAPPublisher):
+            pass
+        w = WrapperTemplate()
+        # construct an object to export through twisted.
+        map(lambda x: setattr(w,"soap_"+x.__name__, x), exp)
+        return w
+        
+    def listenTwisted(self):
+        from twisted.internet import reactor
+        root = tResource.Resource()
+        tStatic.loadMimeTypes() # load from /etc/mime.types
+
+        # setup static file paths
+        map(lambda x: root.putChild(x[0],tStatic.File(x[1])),
+            self.staticPaths)
+
+        # setup exportable interface
+        wrapper = self._makeTwistedWrapper(self.funcExports)
+        root.putChild(self.soapPath, wrapper)
+
+        # init listening
+        reactor.listenTCP(self.soapPort, tServer.Site(root))
+
+        log.debug("Starting worker interface at: %s"% self.url)
+        reactor.run()
+        pass
+   
 
 
-
-
-
-def fakeCommand():
-    cf = CommandFactory(Config.dummyConfig())
-    ins = ["camsom1pdf/camsom1pdf.cam2.h1.0001-01-01-00000.nc"]
-    outs = ["out.nc"]
-    linenum = 20
-    c = cf.newCommand("ncwa", ({},[],ins+outs),(ins,outs), linenum)
-    return c.pickleNoRef()
-
+log = logging.getLogger("SWAMP")
 
 def selfTest():
-    pass
+    jm = soapi.JobManager("swamp.conf")
+    jm.slaveExec()
 
-def clientTest():
-    import SOAPpy
-    #server = SOAPpy.SOAPProxy("http://localhost:8080/SOAP")
-    server = SOAPpy.SOAPProxy("http://localhost:8080")
-    server.reset()
-    tok = server.slaveExec(fakeCommand())
-    print "submitted, got token: ", tok
-    while True:
-        ret = server.pollState(tok)
-        if ret is not None:
-            print "finish, code ", ret
-            break
-        time.sleep(1)
-    print "actual outs are at", server.pollOutputs(tok)
+def pingTest(confFilename):
+    """
+    ping a server specified by a configuration file.
+    """
+    from twisted.web.soap import Proxy
+    from twisted.internet import reactor
+    import time
 
-def main():
-    selfTest()
+    c = Config(confFilename)
+    c.read()
+    url = "http://%s:%d/%s" % (c.slaveHostname,
+                               c.slavePort,
+                               c.slaveSoapPath)
+    print "using url",url
+    proxy = Proxy(url)
+    t = time.time()
+    call = proxy.callRemote('ping')
+
+    def succ(cook):
+        e = time.time()
+        print "success ",cook
+        a = cook.split()
+        firsthalf = float(a[1]) - t
+        total = e-t
+        print "total time: %f firsthalf: %f" %(total, firsthalf)
+        reactor.stop()
+    def fail(reason):
+        print "fail",reason
+        reactor.stop()
+    call.addCallbacks(succ, fail)
+    reactor.run()
     
-    jm = SimpleJobManager("slave.conf")
-    #jm.startSlaveServer()
-    jm.startTwistedSlaveServer()
-
-if __name__ == '__main__':
-    main()
-
+    
