@@ -44,11 +44,8 @@ from SOAPpy import SOAPProxy # for remote execution
 from swamp_dbutil import JobPersistence
 from swamp_config import Config
 from syntax_extensions import BacktickParser
+from swamp import log
 
-# define global swamp logger
-log = logging.getLogger("SWAMP")
-#
-#
 
 #local module helpers:
 def appendList(aDict, key, val):

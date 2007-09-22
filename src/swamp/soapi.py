@@ -19,16 +19,20 @@ import twisted.web.resource as tResource
 import twisted.web.server as tServer
 import twisted.web.static as tStatic
 
+# SWAMP imports
+from swamp import log
 
 class Instance:
     
-    def __init__(self, hostPortPath, staticPaths, funcExports):
+    def __init__(self, hostPortPath, staticPaths,
+                 funcExports, customChildren):
         self.soapHost = hostPortPath[0]
         self.soapPort = hostPortPath[1]
         self.soapPath = hostPortPath[2]
 
         self.staticPaths = staticPaths
         self.funcExports = funcExports
+        self.customChildren = customChildren
         self.url = "http://%s:%d/%s" % hostPortPath
 
     def _makeTwistedWrapper(self, exp):
@@ -56,6 +60,9 @@ class Instance:
         wrapper = self._makeTwistedWrapper(self.funcExports)
         root.putChild(self.soapPath, wrapper)
 
+        
+        map(lambda x: root.putChild(x[0],x[1]), self.customChildren)
+
         # init listening
         reactor.listenTCP(self.soapPort, tServer.Site(root))
 
@@ -63,9 +70,6 @@ class Instance:
         reactor.run()
         pass
    
-
-
-log = logging.getLogger("SWAMP")
 
 def selfTest():
     jm = soapi.JobManager("swamp.conf")
