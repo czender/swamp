@@ -62,7 +62,7 @@ class StandardJobManager:
         else:
             config = Config()
         config.read()
-        le = LocalExecutor.newInstance(self.config)
+        le = LocalExecutor.newInstance(config)
         self.filemap = FileMapper("f"+str(os.getpid()),
                                   config.execSourcePath,
                                   config.execResultPath,
@@ -70,10 +70,9 @@ class StandardJobManager:
         self.resultExportPref = "http://%s:%d/%s/" % (config.serverHostname,
                                                       config.serverPort,
                                                       config.serverFilePath)
-        self.resultExportPref = self.exportPrefix + "/"
 
-        self.publishedPaths = [(self.config.serverFilePath,
-                                self.config.execResultPath)]
+        self.publishedPaths = [(config.serverFilePath,
+                                config.execResultPath)]
         self.publishedFuncs = [self.reset,
                                self.newScriptedFlow, self.discardFlow,
                                self.pollState, self.pollOutputs,

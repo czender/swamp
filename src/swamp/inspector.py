@@ -13,6 +13,7 @@ inspector - Contains logic for swamp's web-based inspector.
 # Standard Python imports
 import string
 import os
+import time
 
 # (semi-) third-party imports
 import twisted.web.resource as tResource
@@ -73,26 +74,6 @@ class Interface:
                                % (self.buildUrl(x),x), sorted))
         post = '</span> ' + announcement
         return "".join([pre,bulk,post])
-    def rebuildDb(self,form):
-        """resets the db, clearing entries and using the latest schema"""
-        import swamp_dbutil
-        print self.handyHeader()
-        print "dbfilename is ", dbfilename
-        try:
-            swamp_dbutil.deleteTables(dbfilename)
-        except:
-            pass # ok if error deleting tables.
-        swamp_dbutil.buildTables(dbfilename)
-        
-        return "Done rebuilding db"
-
-    def showDb(self,form):
-        """prints the db state"""
-        import swamp_dbutil
-        print self.handyHeader()
-        swamp_dbutil.quickShow(dbfilename)
-        
-        return "done with output"
 
     def showFileDb(self, form):
         """prints the filestate in the db"""
