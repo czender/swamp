@@ -3,6 +3,7 @@
 """
 server - Contains 'top-level' code for swamp server instances
 
+
 """
 # Copyright (c) 2007 Daniel Wang
 # This file is part of SWAMP.
@@ -11,10 +12,16 @@ server - Contains 'top-level' code for swamp server instances
 import os
 import threading 
 
+# (semi-) third-party module imports
+import SOAPpy
+
 # SWAMP imports 
-import swamp.soapi as soapi
+from swamp import log
 from swamp_common import *
 from swamp_config import Config     
+import swamp.inspector as inspector
+import swamp.soapi as soapi
+
 
 class LaunchThread(threading.Thread):
     def __init__(self, launchFunc, updateFunc):
@@ -28,8 +35,20 @@ class LaunchThread(threading.Thread):
 
 
 class WorkerConnector(threading.Thread):
-    def __init__(self):
+    def __init__(self, target, offer):
+        """
+        target is a tuple: (url, certificate)
+          url: A string containing the SOAP url for the master
+          certificate: An opaque object to present to the master.  Masters
+          should only accept registrations from certificates they trust.
+        offer is a tuple: (url, slots)
+          url: A string containing the SOAP url for the offering interface
+          slots: Scheduling slot count
+          (consider providing CPU and I/O metrics, as well as a catalog
+        """
         threading.Thread.__init__(self)
+        self._target = target
+        self._offer = offer
         self.active = True
         self._connected = False
         self._timeStart = time.time()
@@ -75,11 +94,22 @@ class WorkerConnector(threading.Thread):
 
     def _tryConnect(self):
         """actually, make an attempt at connecting."""
+        server = SOAPpy.SOAPProxy(self._target[0])
         # make some soap
         # connect and register my url and slot count.
-        # also use magic key
         # in the future, register my catalog
-        #rpc.registerWorker(url, slots, magickey)
+        try:
+            ack = server.registerWorker(self._target[1], self._offer)
+        except:
+            ack = False
+        if not ack: # or some other failure mode
+            # Characterize failure
+            # fail- do not try again
+            # fail- try again later
+            # timeout - try again later
+            return
+        # on success, set connected.
+        self._connected = True
         
     
 class JobManager:
@@ -88,49 +118,72 @@ class JobManager:
     files, but it's not needed right now for benchmarking, and will
     complicate debugging"""
         
-    def __init__(self, cfgName=None):
+    def __init__(self, cfgName, overrides):
         if cfgName:
             self.config = Config(cfgName)
         else:
             self.config = Config()
         self.config.read()
+        self.config.update(overrides)
         
-        cfile = logging.FileHandler(self.config.logLocation)
-        formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
-        cfile.setFormatter(formatter)
-        log.addHandler(cfile)
-        log.setLevel(self.config.logLevel)
-        log.info("Swamp slave logging at "+self.config.logLocation)
         self.config.dumpSettings(log, logging.DEBUG)
-
+        self._setupLogging(self.config)
+        
         self.jobs = {} # dict: tokens -> jobstate
-        self.fileMapper = FileMapper("slave%d"%os.getpid(),
-                                     self.config.execSourcePath,
-                                     self.config.execScratchPath,
-                                     self.config.execBulkPath)
-        self.scratchSub = "s"
-        self.bulkSub = "b"
-       
-        self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
-                                       self.fileMapper)
+
 
         self.exportPrefix = "http://%s:%d/%s" % (self.config.slaveHostname,
                                                  self.config.slavePort,
                                                  self.config.slavePubPath)
-        self.scratchExportPref = self.exportPrefix + self.scratchSub + "/"
-        self.bulkExportPref = self.exportPrefix + self.bulkSub + "/"
         self.token = 0
         self.tokenLock = threading.Lock()
-        self.publishedFuncs = [self.reset, self.slaveExec,
-                               self.pollState, self.pollStateMany,
-                               self.pollOutputs,
-                               self.discardFile, self.discardFiles,
-                               self.ping
-                               ]
-        self.publishedPaths = [(self.config.slavePubPath+self.scratchSub, self.config.execScratchPath),
-                               (self.config.slavePubPath+self.bulkSub, self.config.execBulkPath)]
+        self._modeSetup("worker")
                                
         pass
+
+    def _modeSetup(self, mode):
+        if mode == "worker":
+            scratchSub = "s"
+            bulkSub = "b"
+            self.fileMapper = FileMapper("slave%d"%os.getpid(),
+                                         self.config.execSourcePath,
+                                         self.config.execScratchPath,
+                                         self.config.execBulkPath)
+            self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
+                                           self.fileMapper)
+
+            # prefixes for remapping.
+            self.scratchExportPref = self.exportPrefix + scratchSub + "/"
+            self.bulkExportPref = self.exportPrefix + bulkSub + "/"
+
+            self.publishedFuncs = [self.reset, self.slaveExec,
+                                   self.pollState, self.pollStateMany,
+                                   self.pollOutputs,
+                                   self.discardFile, self.discardFiles,
+                                   self.ping
+                                   ]
+            self.publishedPaths = [(self.config.slavePubPath + scratchSub,
+                                    self.config.execScratchPath),
+                                   (self.config.slavePubPath + bulkSub,
+                                    self.config.execBulkPath)]
+            
+            pass
+        elif mode == "master":
+            log.error("Frontend/master code not migrated yet..")
+            pass
+        else:
+            log.error("Invalid server mode, don't know what to do.")
+            print 'Panic! Invalid server mode, expecting "worker" or "master"'
+            return
+    
+    def _setupLogging(self, config):
+        cfile = logging.FileHandler(config.logLocation)
+        formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
+        cfile.setFormatter(formatter)
+        log.addHandler(cfile)
+        log.setLevel(config.logLevel)
+        log.info("Swamp slave logging at " + config.logLocation)
+        
 
     def reset(self):
         # Clean up trash from before:
@@ -214,13 +267,24 @@ class JobManager:
     def ping(self):
         return "PONG %f" %time.time()
 
+    def dangerousRestart(self):
+         args = sys.argv #take the original arguments
+         args.insert(0, sys.executable) # add python
+         os.execv(sys.executable, args) # replace self with new python.
+
     def listenTwisted(self):
+        self.config.serverInspectPath = "inspect"
+        custom = [("inspect", inspector.newResource(self.config))]
         s = soapi.Instance((self.config.slaveHostname,
-                      self.config.slavePort,
-                      self.config.slaveSoapPath), 
-                     self.publishedPaths,
-                     self.publishedFuncs)
+                            self.config.slavePort,
+                            self.config.slaveSoapPath), 
+                           self.publishedPaths,
+                           self.publishedFuncs,
+                           custom)
+                 
         s.listenTwisted()
+
+    
         
     pass # end class JobManager
  
@@ -230,11 +294,12 @@ def selfTest():
 def pingServer(configFilename):
     soapi.pingTest(configFilename)
 
-def startServer(configFilename):
+def startServer(configFilename, overrides={}):
     selfTest()
+
+    #jm = soapi.JobManager(configFilename)
     
-    #jm = soapi.JobManager(configFilename) 
-    jm = JobManager(configFilename)
+    jm = JobManager(configFilename, overrides)
     jm.listenTwisted()
 
 

@@ -1,12 +1,19 @@
-#$Id$
-# swamp_config.py
-# Copyright (c) 2007 Daniel L. Wang
+# $Id$
+
+"""
+config - Contains core logic for handling SWAMP configuration.
+"""
+# Copyright (c) 2007 Daniel Wang
+# This file is part of SWAMP.
+# SWAMP is released under the GNU General Public License version 3 (GPLv3)
+
 import ConfigParser
 import logging
 import os
 import sys
 
-log = logging.getLogger("SWAMP")
+from swamp import log
+
 class Config:
     """class Config: contains our local configuration information
     settings get written as attributes to an instance"""
@@ -102,6 +109,11 @@ class Config:
         for m in Config.CFGMAP:
             val = getattr(self, m[0])
             logger.log(level, template % (m[0], str(val)))
+
+    def update(self, overrides):
+        if overrides:
+            log.warning("Unimplemented configuration overriding code.")
+        pass 
             
     @staticmethod
     def dummyConfig():

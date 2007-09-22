@@ -18,3 +18,7 @@ __version__ = '0.1'
 
 # setup all
 __all__ = []
+
+# Setup logger (? might move this to a separate file)
+import logging
+log = logging.getLogger("SWAMP")
