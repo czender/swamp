@@ -7,7 +7,7 @@
 
 # SWAMP imports
 from swamp_common import *
-from swamp_config import Config
+from swamp.config import Config
 from swamp_transact import *
 from swamp import log
 import swamp.soapi as soapi
@@ -77,7 +77,8 @@ class StandardJobManager:
                                self.newScriptedFlow, self.discardFlow,
                                self.pollState, self.pollOutputs,
                                self.pollJob,
-                               self.pyInterface]
+                               self.pyInterface,
+                               self.registerWorker]
 
         self.swampInterface = SwampInterface(config, le)
         self.config = config
@@ -135,7 +136,7 @@ class StandardJobManager:
             tb_list = traceback.format_exception(*sys.exc_info())
             return "".join(tb_list)
         pass
-        
+
     def _updateToken(self, token, etoken):
         self.jobs[token] = etoken
         
@@ -264,9 +265,9 @@ class StandardJobManager:
 
     def registerWorker(self, certificate, offer):
         # for now, accept all certificates.
-        log.debug("Received offer from %s with %d slots" %(offer))
-        (workerUrl, workerSlots) = offer
-        result = self.swampInterface.addWorker(url, slots)
+        log.debug("Received offer from %s with %d slots" %(offer[0],offer[1]))
+        (workerUrl, workerSlots) = (offer[0], offer[1])
+        result = self.swampInterface.addWorker(workerUrl, workerSlots)
         if not result:
             log.error("Error registering worker " + url)
             return False
