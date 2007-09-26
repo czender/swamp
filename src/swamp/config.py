@@ -7,6 +7,7 @@ config - Contains core logic for handling SWAMP configuration.
 # This file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
+# Standard Python imports
 import ConfigParser
 import logging
 import os
@@ -43,11 +44,14 @@ class Config:
               ("execLocalSlots", "exec", "localSlots", 2),
               ("execSlaveNodes", "exec", "slaveNodes", 0),
 
-              ("slaveHostname", "slave", "hostname", "localhost"),
-              ("slavePort", "slave", "port", 8080),
-              ("slaveSoapPath", "slave", "soapPath", "SOAP"),
-              ("slavePubPath", "slave", "pubPath", "pub"),
-
+              ("serviceHostname", "service", "hostname", "localhost"),
+              ("servicePort", "service", "port", 8081),
+              ("serviceSoapPath", "service", "soapPath", "SOAP"),
+              ("servicePubPath", "service", "pubPath", "pub"),
+              ("serviceMode", "service", "mode", "master"),
+              ("masterUrl", "service", "masterUrl", ""),
+              ("masterAuth", "service", "masterAuth", ""),
+              
               ("dbFilename", "db", "filename", None),
 
               ]

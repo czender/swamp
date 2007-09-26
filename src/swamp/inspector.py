@@ -13,6 +13,7 @@ inspector - Contains logic for swamp's web-based inspector.
 # Standard Python imports
 import string
 import os
+import sys
 import time
 
 # (semi-) third-party imports
@@ -52,39 +53,39 @@ class Interface:
                         "joblist" : self.listJobs,
                         "env" : self.showEnv,
                         "filedb" : self.showFileDb,
-                        "sanitycheck" : self.sanityCheck
+                        "sanitycheck" : self.sanityCheck,
+                        "hardreset" : self.hardReset
                         }
         self.config = config
         self.endl = "<br/>"
         
         
-    def buildUrl(self, action):
+    def _buildUrl(self, action):
         return  "http://%s:%d/%s?action=%s" % (self.config.serverHostname,
                                         self.config.serverPort,
                                         self.config.serverInspectPath,
                                         action)
 
-    def handyHeader(self):
+    def _handyHeader(self):
         announcement = """<span id="info"><br/>
         Warning, this won't work properly on worker instances <br/></span>"""
         pre = '<span id="toolbar"> Handy Toolbar: '
         sorted = self.actions.keys()
         sorted.sort()
         bulk = ' | '.join(map( lambda x : '<a href="%s">%s</a>' 
-                               % (self.buildUrl(x),x), sorted))
+                               % (self._buildUrl(x),x), sorted))
         post = '</span> ' + announcement
         return "".join([pre,bulk,post])
 
     def showFileDb(self, form):
         """prints the filestate in the db"""
         import swamp_dbutil
-        print self.handyHeader()
         swamp_dbutil.fileShow(dbfilename)
         return "done with output"
 
     def printHelp(self,form):
         """prints a brief help message showing available commands"""
-        r = self.handyHeader()
+        r = self._handyHeader()
         r += "\n<pre>available commands:\n"
         sorted = self.actions.items()
         sorted.sort()
@@ -93,10 +94,9 @@ class Interface:
         r += "</pre>\n"
         return r
         
-        return "done with output"
     def showEnv(self, form):
         """(debug)prints the available env vars"""
-        result = [ self.handyHeader()]
+        result = [ self._handyHeader()]
         result.append("<pre>")
         for k in os.environ:
             result.append( "%-20s : %s" %(k,os.environ[k]))
@@ -128,7 +128,7 @@ class Interface:
         report = self.endl.join([info(officialreport[0]),
                                  " ".join(map(info,officialreport[1])),
                                  " ".join(map(info,officialreport[2]))])
-        return "".join([ self.handyHeader(), self.endl,
+        return "".join([ self._handyHeader(), self.endl,
                          "submitted jobs:", self.endl,
                          runjobs, self.endl,
                          "discarded:", self.endl,
@@ -158,7 +158,7 @@ class Interface:
         """Check some internal data structures for consistency"""
         versions = [# "Swamp core version: %s" % SwampCoreVersion,
                     "Swamp SOAP interface version: %s" % swamp.SoapInterfaceVersion]
-        return self.endl.join([self.handyHeader()] + versions +
+        return self.endl.join([self._handyHeader()] + versions +
                               [ "No checks implemented yet"])
 
     def _rawCatalog(self, root=""):
@@ -221,18 +221,38 @@ class Interface:
         print "END listing</pre>"
         
         return "done with output"
-        
-    def complainLoudly(self):
+
+    def hardReset(self, form):
+        """UNSAFELY restarts server process.(DANGEROUS)"""
+        if self.config.serverMode != "debug":
+            return "Error, debugging is disabled."
+        self._performReset()
+
+    def _performReset(self):
+        """
+        Duplicates three lines of reset code in server.py.
+        It would seem to require more than three lines to properly fix
+        the plumbing so that we had *one* place for full-restart code.
+        It shouldn't be that hard.  FIXME.
+        """        
+        args = sys.argv #take the original arguments
+        args.insert(0, sys.executable) # add python
+        os.execv(sys.executable, args) # replace self with new python.
+        print "Reset failed:",sys.executable, str(args)
+        return # This will not return.  os.execv should overwrite us.
+
+    def _complainLoudly(self):
         """internal: print a nice error message if an unknown action
         is requested"""
         return self.endl.join([self.handyHeader(),
                                "Sorry, I didn't understand your request."])
 
     def execute(self, action, form, errorfunc):
+        """Used to wrap up the function dispatch with mild error-handling."""
         if action in self.actions:
             return self.actions[action](form)
         else:
-            return self.complainLoudly()
+            return self._complainLoudly()
 
 def newResource(config):
     return Resource(Interface(config))

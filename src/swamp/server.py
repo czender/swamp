@@ -18,7 +18,7 @@ import SOAPpy
 # SWAMP imports 
 from swamp import log
 from swamp_common import *
-from swamp_config import Config     
+from swamp.config import Config     
 import swamp.inspector as inspector
 import swamp.soapi as soapi
 
@@ -54,15 +54,19 @@ class WorkerConnector(threading.Thread):
         self._timeStart = time.time()
         self._timeLastAttempt = None
         self.exitJustification = None
-        self.timeBetweenAttempts = 30 # 30 seconds
+        self.timeBetweenAttempts = 5 # 30 seconds
         self.timeToGiveUp = 1800 # 30 minutes
         self.maxSleep = 2
         
     def run(self):
+        print "starting connector thread"
         while self.active:
             # maintain a connection
             if (not self._connected) and (not self._timeout()):
-                self._connect()                
+                self._connect()
+            else:
+                time.sleep(5)
+        print "exit connector thread"
         pass
 
     def _timeout(self):
@@ -75,15 +79,20 @@ class WorkerConnector(threading.Thread):
             self.exitJustification = "Timeout: giving up after %d seconds" % (
                 self.timeToGiveUp)
             return True
+        else:
+            print time.time()-self._timeStart, " seconds is not timed out"
         return False
     
     def _connect(self):
         """attempt a connection, if we've waited long enough."""
-        if self._timeLastAttempt:
+        if not self._timeLastAttempt:
+            self._tryConnect()
+        else:
             waittime =  time.time() - self._timeLastAttempt
             if waittime >= self.timeBetweenAttempts:
                 self._tryConnect()
             else:
+                print ".",
                 remaining = self.timeBetweenAttempts - waittime
                 if remaining > self.maxSleep:
                     time.sleep(self.maxSleep)
@@ -99,6 +108,7 @@ class WorkerConnector(threading.Thread):
         # connect and register my url and slot count.
         # in the future, register my catalog
         try:
+            print "trying connect", time.ctime()
             ack = server.registerWorker(self._target[1], self._offer)
         except:
             ack = False
@@ -107,7 +117,10 @@ class WorkerConnector(threading.Thread):
             # fail- do not try again
             # fail- try again later
             # timeout - try again later
+            print "bad ack",ack
+            self._timeLastAttempt = time.time()
             return
+        print "good ack"
         # on success, set connected.
         self._connected = True
         
@@ -132,9 +145,14 @@ class JobManager:
         self.jobs = {} # dict: tokens -> jobstate
 
 
-        self.exportPrefix = "http://%s:%d/%s" % (self.config.slaveHostname,
-                                                 self.config.slavePort,
-                                                 self.config.slavePubPath)
+        self.exportPrefix = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                                 self.config.servicePort,
+                                                 self.config.servicePubPath)
+
+   
+        self.soapUrl = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                            self.config.servicePort,
+                                            self.config.serviceSoapPath)
         self.token = 0
         self.tokenLock = threading.Lock()
         self._modeSetup("worker")
@@ -162,11 +180,14 @@ class JobManager:
                                    self.discardFile, self.discardFiles,
                                    self.ping
                                    ]
-            self.publishedPaths = [(self.config.slavePubPath + scratchSub,
+            self.publishedPaths = [(self.config.servicePubPath + scratchSub,
                                     self.config.execScratchPath),
-                                   (self.config.slavePubPath + bulkSub,
+                                   (self.config.servicePubPath + bulkSub,
                                     self.config.execBulkPath)]
-            
+            target = (self.config.masterUrl, self.config.masterAuth)
+            offer = (self.soapUrl, self.config.execLocalSlots)
+            self.registerThread = WorkerConnector(target, offer)
+            self.lateInit = self.registerThread.start
             pass
         elif mode == "master":
             log.error("Frontend/master code not migrated yet..")
@@ -267,22 +288,26 @@ class JobManager:
     def ping(self):
         return "PONG %f" %time.time()
 
-    def dangerousRestart(self):
-         args = sys.argv #take the original arguments
-         args.insert(0, sys.executable) # add python
-         os.execv(sys.executable, args) # replace self with new python.
+    def dangerousRestart(self, auth):
+        # Think about what sort of checks we should do to prevent orphan
+        # processes and resources. FIXME.
+        args = sys.argv #take the original arguments
+        args.insert(0, sys.executable) # add python
+        os.execv(sys.executable, args) # replace self with new python.
+
+    def grimReap(self):
+        self.registerThread.active = False
 
     def listenTwisted(self):
         self.config.serverInspectPath = "inspect"
         custom = [("inspect", inspector.newResource(self.config))]
-        s = soapi.Instance((self.config.slaveHostname,
-                            self.config.slavePort,
-                            self.config.slaveSoapPath), 
+        s = soapi.Instance((self.config.serviceHostname,
+                            self.config.servicePort,
+                            self.config.serviceSoapPath), 
                            self.publishedPaths,
                            self.publishedFuncs,
                            custom)
-                 
-        s.listenTwisted()
+        s.listenTwisted(self.lateInit)
 
     
         
@@ -301,7 +326,6 @@ def startServer(configFilename, overrides={}):
     
     jm = JobManager(configFilename, overrides)
     jm.listenTwisted()
-
-
+    jm.grimReap()
     pass
 

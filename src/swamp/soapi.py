@@ -47,7 +47,7 @@ class Instance:
         map(lambda x: setattr(w,"soap_"+x.__name__, x), exp)
         return w
         
-    def listenTwisted(self):
+    def listenTwisted(self, extInit=lambda : None):
         from twisted.internet import reactor
         root = tResource.Resource()
         tStatic.loadMimeTypes() # load from /etc/mime.types
@@ -67,6 +67,7 @@ class Instance:
         reactor.listenTCP(self.soapPort, tServer.Site(root))
 
         log.debug("Starting worker interface at: %s"% self.url)
+        extInit()
         reactor.run()
         pass
    

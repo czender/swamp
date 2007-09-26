@@ -42,7 +42,7 @@ from SOAPpy import SOAPProxy # for remote execution
 # SWAMP imports
 #
 from swamp_dbutil import JobPersistence
-from swamp_config import Config
+from swamp.config import Config
 from syntax_extensions import BacktickParser
 from swamp import log
 
@@ -1912,6 +1912,11 @@ class SwampInterface:
         self.mainThread.acceptTask(t)
         return t
 
+    def addWorker(self, url, slots):
+        log.debug("trying to add new worker: %s with %d" %(url,slots))
+        re = RemoteExecutor(url,slots)
+        log.debug("constructed worker")
+        return True
     
     
     def fileStatus(self, logicalname):
@@ -2226,7 +2231,13 @@ class RemoteExecutor:
         self.slots = slots
         self.rpc = SOAPProxy(url)
         log.debug("reset slave at %s with %d slots" %(url,slots))
-        self.rpc.reset()
+        try:
+            self.rpc.reset()
+        except Exception, e:
+            import traceback, sys
+            tb_list = traceback.format_exception(*sys.exc_info())
+            msg =  "".join(tb_list)
+            raise StandardError("can't connect to "+url+str(msg))
         self.running = {}
         self.finished = {}
         self.token = 100
