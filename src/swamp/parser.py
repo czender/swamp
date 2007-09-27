@@ -21,7 +21,7 @@ from pyparsing import *
 
 # SWAMP imports 
 from swamp import log
-from syntax_extensions import BacktickParser
+from swamp.syntax import BacktickParser
 
 
 

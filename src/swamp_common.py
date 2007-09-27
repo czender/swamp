@@ -1031,10 +1031,12 @@ class LocalExecutor:
                              FileMapper("swamp%d"%os.getpid(),
                                         config.execSourcePath,
                                         config.execScratchPath,
-                                        config.execBulkPath))
+                                        config.execBulkPath),
+                             config.execLocalSlots)
     def busy(self):
         # soon, we should put code here to check for process finishes and
         # cache their results.
+        log.debug("%s busy %d/%d" %(str(self), len(self.running), self.slots))
         return len(self.running) >= self.slots
 
     def launch(self, cmd, locations=[]):
@@ -1098,7 +1100,7 @@ class LocalExecutor:
             return self.pollCache.pop()
         f = self.pollAll()
         if f:
-            log.debug("pollall ok: "+str(f))
+            #log.debug("pollall ok: "+str(f))
             top = f.pop()
             self.pollCache += f
             return top
