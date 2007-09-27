@@ -1,4 +1,15 @@
-#!/usr/bin/python
+# $Id: server.py 36 2007-09-26 01:18:06Z daniel2196 $
+
+"""
+syntax - contains syntax extensions to the parser,
+         notably subprocess evaluation of backtick expressions.
+"""
+# Copyright (c) 2007 Daniel Wang
+# This file is part of SWAMP.
+# SWAMP is released under the GNU General Public License version 3 (GPLv3)
+
+# Std. Python imports
+
 from pyparsing import *
 import shlex
 import subprocess
