@@ -17,6 +17,7 @@ import swamp.inspector as inspector
 import cPickle as pickle
 import logging
 import os
+import sys
 import threading
 
 # (semi-) third-party imports
@@ -78,7 +79,8 @@ class StandardJobManager:
                                self.pollState, self.pollOutputs,
                                self.pollJob,
                                self.pyInterface,
-                               self.registerWorker]
+                               self.registerWorker,
+                               self.unregisterWorker]
 
         self.swampInterface = SwampInterface(config, le)
         self.config = config
@@ -88,8 +90,12 @@ class StandardJobManager:
         self.tokenLock = threading.Lock()
         self.jobs = {}
         self.discardedJobs = {}
+        self._setupMaster()
         pass
 
+    def _setupMaster(self):
+        self._workers = {}
+        self._nextWorkerToken = 1
     def _setupVariablePreload(self, interface):
         interface.updateVariablePreload({
             "SWAMPVERSION" : "0.1+",
@@ -268,9 +274,19 @@ class StandardJobManager:
         log.debug("Received offer from %s with %d slots" %(offer[0],offer[1]))
         (workerUrl, workerSlots) = (offer[0], offer[1])
         result = self.swampInterface.addWorker(workerUrl, workerSlots)
+        token = self._nextWorkerToken
+        self._nextWorkerToken += 1
+        self._workers[token] = result
+
         if not result:
             log.error("Error registering worker " + url)
-            return False
+            return None
+        return token
+
+    def unregisterWorker(self, sessionToken):
+        if sessionToken not in self._workers:
+            return None
+        self.swampInterface.dropWorker(self._workers[sessionToken])
         return True
                 
     pass # end class StandardJobManager

@@ -66,6 +66,8 @@ class WorkerConnector(threading.Thread):
                 self._connect()
             else:
                 time.sleep(5)
+        if self._connected:
+            self._tryDisconnect() # attempt to gracefully disconnect
         print "exit connector thread"
         pass
 
@@ -101,6 +103,11 @@ class WorkerConnector(threading.Thread):
                 
         pass 
 
+    def _tryDisconnect(self):
+        server = SOAPpy.SOAPProxy(self._target[0])
+        ack = server.unregisterWorker(self._token)
+        pass
+    
     def _tryConnect(self):
         """actually, make an attempt at connecting."""
         server = SOAPpy.SOAPProxy(self._target[0])
@@ -121,6 +128,7 @@ class WorkerConnector(threading.Thread):
             self._timeLastAttempt = time.time()
             return
         print "good ack"
+        self._token = ack
         # on success, set connected.
         self._connected = True
         
