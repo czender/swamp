@@ -96,6 +96,7 @@ class StandardJobManager:
     def _setupMaster(self):
         self._workers = {}
         self._nextWorkerToken = 1
+
     def _setupVariablePreload(self, interface):
         interface.updateVariablePreload({
             "SWAMPVERSION" : "0.1+",
