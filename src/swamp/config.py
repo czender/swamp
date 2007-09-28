@@ -69,18 +69,26 @@ class Config:
     def __init__(self, fname = "swamp.conf"):
         self.config = ConfigParser.ConfigParser()
         self.slave = []
-        if len(os.path.split(fname)[0]) == 0:
-            # look in the same place as the script is located...
-            # should I check current working directory instead?
-            self.filepath = os.path.join(os.path.split(sys.argv[0])[0],
-                                    fname)
+        if not isinstance(fname, list):
+            self.filepath = map(self._fixPath, fname)
         else:
-            self.filepath = fname
-        pass
+            self.filepath = self._fixPath(fname)
+
+
+    def _fixPath(self, fname):
+        if len(os.path.split(fname)[0]) == 0:
+            # Used to look in same place as the script is located...
+            # but it seems more logical to check the current working
+            # directory.
+            filepath = os.path.join(os.getcwd(), fname)
+        else:
+            filepath = fname
+        return filepath
+
     
     def read(self):
         log.info("Reading configfile %s" % (self.filepath))
-        self.config.read(self.filepath)
+        map(self.config.read, self.filepath) # read all configs in-order.
         for m in Config.CFGMAP:
             val = m[3] # preload with default
             if self.config.has_option(m[1], m[2]):
@@ -114,6 +122,9 @@ class Config:
             val = getattr(self, m[0])
             logger.log(level, template % (m[0], str(val)))
 
+    def updateViaFile(self, file):
+        self.newconfig = None
+        pass
     def update(self, overrides):
         if overrides:
             log.warning("Unimplemented configuration overriding code.")
