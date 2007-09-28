@@ -69,10 +69,10 @@ class Config:
     def __init__(self, fname = "swamp.conf"):
         self.config = ConfigParser.ConfigParser()
         self.slave = []
-        if not isinstance(fname, list):
+        if isinstance(fname, list):
             self.filepath = map(self._fixPath, fname)
         else:
-            self.filepath = self._fixPath(fname)
+            self.filepath = [self._fixPath(fname)]
 
 
     def _fixPath(self, fname):

@@ -195,13 +195,13 @@ class Interface:
         map(lambda x: insertptr(x,orgitemlines,dirlist), itemlines)
         dirstring = " ".join(map(lambda x: "<a href=\"#%s\">%s</a><br/>" %
                                  (safename(x),x), dirlist))
-        return self.endl.join([self.handyHeader(), dirstring] + orgitemlines )
+        return self.endl.join([self._handyHeader(), dirstring] + orgitemlines )
 
         
     
     def listFiles(self,form):
         """does a normal ls file listing. sorta-secure"""
-        print self.handyHeader()
+        print self._handyHeader()
         if not form.has_key("path"):
             print "no path specified, specify with parameter 'path'"
             return
@@ -244,7 +244,7 @@ class Interface:
     def _complainLoudly(self):
         """internal: print a nice error message if an unknown action
         is requested"""
-        return self.endl.join([self.handyHeader(),
+        return self.endl.join([self._handyHeader(),
                                "Sorry, I didn't understand your request."])
 
     def execute(self, action, form, errorfunc):

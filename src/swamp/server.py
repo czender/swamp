@@ -10,6 +10,7 @@ server - Contains 'top-level' code for swamp server instances
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
 import os
+import socket
 import threading 
 
 # (semi-) third-party module imports
@@ -59,7 +60,6 @@ class WorkerConnector(threading.Thread):
         self.maxSleep = 2
         
     def run(self):
-        print "starting connector thread"
         while self.active:
             # maintain a connection
             if (not self._connected) and (not self._timeout()):
@@ -68,7 +68,6 @@ class WorkerConnector(threading.Thread):
                 time.sleep(5)
         if self._connected:
             self._tryDisconnect() # attempt to gracefully disconnect
-        print "exit connector thread"
         pass
 
     def _timeout(self):
@@ -82,7 +81,8 @@ class WorkerConnector(threading.Thread):
                 self.timeToGiveUp)
             return True
         else:
-            print time.time()-self._timeStart, " seconds is not timed out"
+            pass
+            #print time.time()-self._timeStart, " seconds is not timed out"
         return False
     
     def _connect(self):
@@ -105,7 +105,10 @@ class WorkerConnector(threading.Thread):
 
     def _tryDisconnect(self):
         server = SOAPpy.SOAPProxy(self._target[0])
+        # logging may have been closed--e.g. Ctrl-C initiated 
+        #log.debug("Disconnecting")
         ack = server.unregisterWorker(self._token)
+        #log.debug("Disconnected from master")
         pass
     
     def _tryConnect(self):
@@ -115,7 +118,7 @@ class WorkerConnector(threading.Thread):
         # connect and register my url and slot count.
         # in the future, register my catalog
         try:
-            print "trying connect", time.ctime()
+            log.debug("trying connect " + str(time.ctime()))
             ack = server.registerWorker(self._target[1], self._offer)
         except:
             ack = False
@@ -124,10 +127,10 @@ class WorkerConnector(threading.Thread):
             # fail- do not try again
             # fail- try again later
             # timeout - try again later
-            print "bad ack",ack
+            log.debug("Bad registration, will retry " + ack)
             self._timeLastAttempt = time.time()
             return
-        print "good ack"
+        log.debug("Successfuly registered to " + self._target[0])
         self._token = ack
         # on success, set connected.
         self._connected = True
@@ -151,16 +154,7 @@ class JobManager:
         self._setupLogging(self.config)
         
         self.jobs = {} # dict: tokens -> jobstate
-
-
-        self.exportPrefix = "http://%s:%d/%s" % (self.config.serviceHostname,
-                                                 self.config.servicePort,
-                                                 self.config.servicePubPath)
-
    
-        self.soapUrl = "http://%s:%d/%s" % (self.config.serviceHostname,
-                                            self.config.servicePort,
-                                            self.config.serviceSoapPath)
         self.token = 0
         self.tokenLock = threading.Lock()
         self._modeSetup("worker")
@@ -178,9 +172,21 @@ class JobManager:
             self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
                                            self.fileMapper)
 
+            if True: # auto-determine hostname?
+                name = self._checkHostname(self.config.masterUrl)
+                if name:
+                    self.config.serviceHostname = name
+
+
             # prefixes for remapping.
+            self.exportPrefix = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                                     self.config.servicePort,
+                                                     self.config.servicePubPath)
             self.scratchExportPref = self.exportPrefix + scratchSub + "/"
             self.bulkExportPref = self.exportPrefix + bulkSub + "/"
+            self.soapUrl = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                                self.config.servicePort,
+                                                self.config.serviceSoapPath)
 
             self.publishedFuncs = [self.reset, self.slaveExec,
                                    self.pollState, self.pollStateMany,
@@ -204,7 +210,33 @@ class JobManager:
             log.error("Invalid server mode, don't know what to do.")
             print 'Panic! Invalid server mode, expecting "worker" or "master"'
             return
-    
+
+    def _checkHostname(self, target):
+        """
+        Check our own ip address by opening a TCP connection to our
+        target url (probably the master's url) and seeing which interface
+        we used.
+        """
+        #split out hostname and port from url.
+        typeTuple = urllib.splittype(target)
+        assert typeTuple[0] == "http"
+        (host, port) = urllib.splitport(urllib.splithost(typeTuple[1])[0])
+        if not port:
+            port = 80
+        else:
+            port = int(port) 
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.connect((host, port)) #make the connection
+            (ip, port) = s.getsockname()
+            result = socket.gethostbyaddr(ip)[0]
+            log.debug("My hostname is " + result)
+        except Exception, e: # On any exception, give up.
+            result = None
+        s.close()
+        return result
+
+        
     def _setupLogging(self, config):
         cfile = logging.FileHandler(config.logLocation)
         formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
