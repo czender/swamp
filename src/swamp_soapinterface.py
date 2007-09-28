@@ -15,6 +15,7 @@ import swamp.inspector as inspector
 
 # Standard Python imports
 import cPickle as pickle
+import getopt
 import logging
 import os
 import sys
@@ -336,11 +337,22 @@ def main():
     selfTest()
     if (len(sys.argv) > 1) and (sys.argv[1] == "--"):
         clientTest()
-    else:
-        jm = StandardJobManager("swamp.conf")
-        #jm.startSlaveServer()
-        jm.startTwistedServer()
-        jm.grimReap() # necessary to wakeup and kill threads.
+        return
+
+    confname = "swamp.conf"
+    # Split this config handling to something scalable
+    # if once we have >2 options
+    (opts, leftover) = getopt.getopt(sys.argv[1:], "c:",["config="])
+    offeredConfs = []
+    for o in opts:
+        if (o[0] == "-c") or (o[0] == "--config"):
+            offeredConfs.append(o[1])
+    if offeredConfs:
+        confname = offeredConfs
+
+    jm = StandardJobManager(confname)
+    jm.startTwistedServer()
+    jm.grimReap() # necessary to wakeup and kill threads.
 
 if __name__ == '__main__':
     main()
