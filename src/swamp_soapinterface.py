@@ -113,6 +113,7 @@ class StandardJobManager:
         if self.config.serverMode == "production":
             log.info("refusing to do hard reset: unsafe for production")
             return
+        assert self.config.serverMode in ["debug","testing"]
         log.info("Reset requested--disabled")
         #self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
