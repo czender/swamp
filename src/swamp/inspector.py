@@ -52,7 +52,7 @@ class Interface:
                         #"ls" : self.listFiles,
                         "joblist" : self.listJobs,
                         "env" : self.showEnv,
-                        "filedb" : self.showFileDb,
+                        #"filedb" : self.showFileDb,
                         "sanitycheck" : self.sanityCheck,
                         "hardreset" : self.hardReset
                         }
@@ -98,8 +98,11 @@ class Interface:
         """(debug)prints the available env vars"""
         result = [ self._handyHeader()]
         result.append("<pre>")
-        for k in os.environ:
-            result.append( "%-20s : %s" %(k,os.environ[k]))
+        if self.config.serverMode not in ["debug","testing"]:
+            result.append("Only available in debug or testing service modes.")
+        else:
+            for k in os.environ:
+                result.append( "%-20s : %s" %(k,os.environ[k]))
         result.append("</pre>")
         return self.endl.join(result)
 
@@ -224,9 +227,15 @@ class Interface:
 
     def hardReset(self, form):
         """UNSAFELY restarts server process.(DANGEROUS)"""
+
         if self.config.serverMode != "debug":
-            return "Error, debugging is disabled."
-        self._performReset()
+            return "".join([self._handyHeader(),
+                         "Error, debugging is disabled."])
+        else:
+            # Unless we thread this or use twisted deferred constructs
+            # we can't provide a friendly response in this case.
+            self._performReset() # will not return
+        pass
 
     def _performReset(self):
         """
