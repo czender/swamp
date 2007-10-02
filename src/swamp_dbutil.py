@@ -1,10 +1,28 @@
 #!/usr/bin/env python
        
 # $Id$
+#
 # This is:  -- a module for managing state persistence for the dap handler.
 #           -- Uses a SQLite backend.
-from pysqlite2 import dbapi2 as sqlite
+#
+# 
+# The future of SWAMP's db-backed backend is unclear. Heavy contention
+# in a SQLite db with multiple readers/writers many times a second
+# (dozens? hundreds?) was difficult on physical disk, despite RAID or
+# caching, and ramdisk version (not really persistent) was required.
+# DB persistence is useful to have server state survive restarts, but
+# it's empirically clear that persistance is not practical unless
+# updates are kept below a frequency of, say, 1Hz.
+#
+# With this in mind, this code is currently kept only for history.
+# 
+
 import os, sys, time
+
+try:
+    from pysqlite2 import dbapi2 as sqlite
+except Exception, e:
+    pass # silence import errors.
 
 
 class local:
