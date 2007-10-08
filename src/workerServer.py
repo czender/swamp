@@ -13,6 +13,8 @@ import getopt
 import sys
 import swamp.server
 
+helpString = "Usage: [--help] [[--config configfile.conf] [-c configfile2.conf]...]"
+
 
 def test():
     swamp.server.pingServer("slave.conf")
@@ -21,11 +23,14 @@ def main():
     confname = "slave.conf"
     # Split this config handling to something scalable
     # if once we have >2 options
-    (opts, leftover) = getopt.getopt(sys.argv[1:], "c:",["config="])
+    (opts, leftover) = getopt.getopt(sys.argv[1:], "c:",["config=","help"])
     offeredConfs = []
     for o in opts:
         if (o[0] == "-c") or (o[0] == "--config"):
             offeredConfs.append(o[1])
+        elif o[0] == "--help":
+            print helpString
+            return
     if offeredConfs:
         confname = offeredConfs
 
