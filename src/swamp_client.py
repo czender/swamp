@@ -183,7 +183,7 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         pass
 
     def _processScript(self, scriptfile):
-        print "processing", scriptfile
+        print "Processing", scriptfile
         if not self._sanityTest():
             print "Failed sanity check.  Bailing out."
             return
@@ -193,8 +193,13 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
             print "can't read specified script file('%s')" % scriptfile
             return
         script = open(scriptfile).read()
-        tok = server.newScriptedFlow(script)
-        print "submitted", scriptfile
+        print "Attempting connection"
+        try:
+            tok = server.newScriptedFlow(script)
+        except socket.error, e:
+            print "Error connecting to server.  Check URL:", self.serverUrl
+            print "Other possible reasons: firewalling, server downtime"
+        print "Submitted", scriptfile
 
         ret = None
         self._waitForScriptFinish(tok)

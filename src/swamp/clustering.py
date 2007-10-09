@@ -41,16 +41,17 @@ class Cluster:
         """for now, formats a config file for use with a worker.
         """
         # vars needed:
-        # log location: /tmp/swampWorker.$pid.log
-        overrides = {"log" : {"location" : "/tmp/swampWorker.$pid.log"},
+        # log location: for now, write to /dev/stdout 
+        # FIXME: make sure python logger allows this.
+        overrides = {"log" : {"location" : "/dev/stdout"},
                      "exec" : {"resultPath" : "per-node",
                                "bulkPath" : "per-node",
                                "sourcePath" : "per-node",
                                "localSlots" : "automagic"},
                      "service" : {"hostname" : "automagic",
                                   "port" : "configured(firewallissue)",
-                                  "soapPath" : "doesn'tmatter",
-                                  "pubPath" : "doesn'tmatter",
+                                  "soapPath" : "sp", #"doesn'tmatter",
+                                  "pubPath" : "pub", #"doesn'tmatter",
                                   "mode" : "worker",
                                   "masterUrl" : "master-filled automagic",
                                   "masterAuth" : "master-filled"}
@@ -63,36 +64,48 @@ class Cluster:
                          + map(makeSection, overrides.items()))
 
 
-        
+    
     
     @staticmethod
     def spawnNode():
+        s = SgeClustering()
+        c = Config()
+        s.invoke(config)
 
+
+class SgeClustering:
+    def scriptFile(self, config):
         options = ["-S /bin/sh", # crucial in our tests
                    "-cwd", # alternatively, add 'cd' cmd to set workingdir
-                   "-N swampworker",
-                   "-j y",
-                   "-o swampworkers.log",
+                   "-N swampworker", #name of job: swampworker
+                   "-j y", # join stdout+stderr
+                   "-o " + config.logFile,
                    "-now y",
-                   "-pe swamp 4", # #choose swamp queue, 4 slots.
-                   
+                   "-pe %s %d" %(config.queueName, config.slotsPerNode),
+                   #choose swamp queue, 4 slots.
                    ]
-        pre = ["echo Starting ",#"cd /home/wangd/swamptest/sge_play"
-               ]
+        pre = ["echo Starting "]
         
-        invocation = "python2.4 workerServer.py"
+        invocation = "%s workerServer.py" % (config.python)
         post = ["echo Finishing"]
         # null element in list exists to force "\n".join to insert a trailing \n
         scriptlines = chain(["#!/bin/sh"],
                             imap(lambda x: "#$ "+x, options),
                             pre, [invocation], post,[""])
         
+        return "\n".join(scriptlines)
+
+    def writeTemp(self, contents):
         (fd, sname) = mkstemp()
-        os.write(fd, "\n".join(scriptlines))
+        os.write(fd, contents)
         os.close(fd)
-        print "wrote",sname
-        commandline = "qsub %s" % (sname)
+        return sname
+
+    def invoke(self, config):
+        batchfile = self.writeTemp(self.scriptFile(config))
         try:
+            commandline = "qsub %s" % (batchfile)
+
             output = Popen(commandline.split(),
                            stdout=PIPE).communicate()[0]
             print "called and got output:", output
@@ -100,12 +113,29 @@ class Cluster:
                 print "wasn't successful submitting."
         finally:
             pass
-            os.unlink(sname)
+            os.unlink(batchfile)
             #print "skipping unlink of ",sname
 
-    @staticmethod
-    def makeCommandlineList(line):
-        l = line.split()
+
+        
+class Config:
+    """An abstract value class that contains information about how
+    to spawn nodes from a particular cluster."""
+
+    def __init__(self, returnPath):
+        """returnPath is a tuple: (masterUrl, masterAuth)"""
+        self.masterUrl = returnPath[0]
+        self.masterAuth = returnPath[1]
+
+        self.clusteringPlatform = SGEClustering
+        self.slotsPerNode = 4
+        self.logFile = "swampworkers.log"
+        self.queueName = "swampworker"
+        self.python = "python2.4"
+        self.resultPath = ""
+        self.bulkPath = ""
+        self.localSlots = "4"
+        self.port = "8082"
         
 
 #
