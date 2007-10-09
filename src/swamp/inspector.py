@@ -54,7 +54,8 @@ class Interface:
                         "env" : self.showEnv,
                         #"filedb" : self.showFileDb,
                         "sanitycheck" : self.sanityCheck,
-                        "hardreset" : self.hardReset
+                        "hardreset" : self.hardReset,
+                        "testspawn" : self.spawnWorker,
                         }
         self.config = config
         self.endl = "<br/>"
@@ -249,6 +250,14 @@ class Interface:
         os.execv(sys.executable, args) # replace self with new python.
         print "Reset failed:",sys.executable, str(args)
         return # This will not return.  os.execv should overwrite us.
+
+    def spawnWorker(self, form):
+        """Development place to request additional workers"""
+        if self.config.serverMode != "debug":
+            return "".join([self._handyHeader(),
+                         "Error, debugging is disabled."])
+        from swamp.clustering import Cluster
+        Cluster.spawnNode()
 
     def _complainLoudly(self):
         """internal: print a nice error message if an unknown action
