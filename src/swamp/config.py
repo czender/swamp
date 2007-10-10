@@ -116,6 +116,12 @@ class Config:
             pass
         pass
 
+    def mySoapUrl(self):
+        return "http://%s:%d/%s/" % (self.serviceHostname,
+                                     self.servicePort,
+                                     self.serviceSoapPath)
+
+    
     def dumpSettings(self, logger, level):
         template = "config %s = %s"
         for m in Config.CFGMAP:

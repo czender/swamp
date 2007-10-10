@@ -172,7 +172,8 @@ class JobManager:
             self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
                                            self.fileMapper)
 
-            if True: # auto-determine hostname?
+            # auto-determine hostname?
+            if self.config.serviceHostname == "<auto>": 
                 name = self._checkHostname(self.config.masterUrl)
                 if name:
                     self.config.serviceHostname = name
