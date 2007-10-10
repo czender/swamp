@@ -1,10 +1,9 @@
 SWAMP client development test HOWTO file
 ----------------------------------------
-9/14/07
-Dear super-privileged people,
+Original: 9/14/07, Last updated: 10/9/07
 
 To get start testing, please try:
-$ source zender_group_test.environ
+$ source zender_group_environ.sh 
 $ python swamp_client.py mtosca.swamp
 
 Notes:
@@ -19,21 +18,28 @@ Notes:
                OR sudo yum install SOAPpy
                OR download it from http://sourceforge.net/projects/pywebsvcs
 
-* You need a SWAMP service to test against.  For people in the zender
-  group, this is a dev cluster located in the CalIT2 building.
+* You need a SWAMP service to test against.  We are providing a SWAMP
+  service instance that you may feel free to test. 
   Contact me (wangd@uci.edu) if you would like help setting up your
   own.  
 
-* zender_group_test.environ defines an environment variable that
+* zender_group_environ.{sh,csh} define an environment variable that
   swamp_client.py checks for the location of the SWAMP service.
 
 * mtosca.swamp illustrates most of the syntax that SWAMP supports.  
   The parser can be a little fragile, so it might foul up occasionally.  
   Let me know if you encounter this so I can fix it.
 
-* esmf_mirroring_notes.txt will tell you some things about the automatic
+* zender_esmf.txt will tell you some things about the automatic
   mirroring service that pulls things from your esmf:/data/userid directory.
   If you're not from UCI, this is meaningless to you.
+
+* The test instance referenced in this distribution is provided for
+  convenience and no guarantees are being made.  Still, it contains
+  daily surface temperature and pressure data from many atmospheric
+  models from the IPCC 4th Assessment Report.
+  See: http://pbs.calit2.uci.edu:8080/inspect?action=catalog#_pcmdi
+
 
 Congratulations!  You're well on your way to executing your own workflows 
 on super-parallel hardware without fussing around the details.
