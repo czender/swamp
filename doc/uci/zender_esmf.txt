@@ -1,0 +1,38 @@
+The following information applies to members of the Zender group in the 
+Department of Earth System Science at the University of California, Irvine.
+---------------------------------------------------------------------------
+
+
+Your data mirror at the pbs cluster SWAMP instance
+--------------------------------------------------
+
+The pbs cluster has been set to automatically keep a copy of your 
+/data/<userid> directory on the ESMF.  Every two hours, it will
+connect to the ESMF and pull new updates.  
+
+Of course, in the interests of saving space, you may wish to exclude
+certain directories from being updated.  To do this, place a file
+named '.swamp-filter' in the directory you wish excluded, with one
+line containing '- *'.  In other words, do: 
+
+# change to directory you want excluded:
+esmf04m$ cd /data/myname/uselessfiles
+esmf04m$ cat >.swamp-filter
+- *
+^D
+esmf04m$ cat .swamp-filter
+- *
+esmf04m$
+
+In this example, we first switch to the directory to be excluded ("cd
+/data/myname/uselessfiles").  Then, we use 'cat' and a shell pipe to
+create '.swamp-filter' ("cat >.swamp-filter").  We type '- *' and then
+hit enter and control-d to end the file.  We can verify the contents
+of .swamp-filter afterwards ("cat .swamp-filter").  Feel free to use
+your favorite editor to create the file if you prefer (emacs, vi,
+nano, pico, gedit, kate, etc.). 
+
+The .swamp-filter file(s) will take effect at the next update interval.
+
+Let me know if you have any questions.
+-Daniel
