@@ -132,8 +132,9 @@ class Config:
         self.logFile = "swampworkers.log"
         self.queueName = "swampworker"
         self.python = "python2.4"
-        self.resultPath = ""
-        self.bulkPath = ""
+        self.resultPath = "/tmp"
+        self.bulkPath = "/tmp"
+        self.scratchPath = "/dev/shm"
         self.localSlots = "4"
         self.port = "8082"
         
