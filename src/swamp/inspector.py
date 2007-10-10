@@ -257,7 +257,10 @@ class Interface:
             return "".join([self._handyHeader(),
                          "Error, debugging is disabled."])
         from swamp.clustering import Cluster
-        Cluster.spawnNode()
+        workerAuth = "asdf"
+        tup = (self.config.mySoapUrl, workerAuth)
+        Cluster.spawnNode(tup)
+        return "spawned with %s" %(str(tup))
 
     def _complainLoudly(self):
         """internal: print a nice error message if an unknown action

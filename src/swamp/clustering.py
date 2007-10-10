@@ -37,24 +37,25 @@ import os
 class Cluster:
 
     @staticmethod
-    def makeConfigString():
+    def makeConfigString(cfg):
         """for now, formats a config file for use with a worker.
         """
         # vars needed:
         # log location: for now, write to /dev/stdout 
         # FIXME: make sure python logger allows this.
         overrides = {"log" : {"location" : "/dev/stdout"},
-                     "exec" : {"resultPath" : "per-node",
-                               "bulkPath" : "per-node",
-                               "sourcePath" : "per-node",
-                               "localSlots" : "automagic"},
-                     "service" : {"hostname" : "automagic",
-                                  "port" : "configured(firewallissue)",
+                     "exec" : {"resultPath" : cfg.resultPath,
+                               "bulkPath" : cfg.bulkPath,
+                               "sourcePath" : cfg.sourcePath,
+                               "scratchPath" : cfg.scratchPath,
+                               "localSlots" : cfg.slotsPerNode},
+                     "service" : {"hostname" : "<auto>",
+                                  "port" : cfg.port,
                                   "soapPath" : "sp", #"doesn'tmatter",
                                   "pubPath" : "pub", #"doesn'tmatter",
                                   "mode" : "worker",
-                                  "masterUrl" : "master-filled automagic",
-                                  "masterAuth" : "master-filled"}
+                                  "masterUrl" : cfg.masterUrl,
+                                  "masterAuth" : cfg.masterAuth}
                      }
         def makeSection(item):
             #print "section",item,item[1].items(),
@@ -67,10 +68,11 @@ class Cluster:
     
     
     @staticmethod
-    def spawnNode():
+    def spawnNode(returnpath):
         s = SgeClustering()
-        c = Config()
-        s.invoke(config)
+        
+        c = Config(returnpath)
+        s.invoke(c)
 
 
 class SgeClustering:
@@ -84,6 +86,9 @@ class SgeClustering:
                    "-pe %s %d" %(config.queueName, config.slotsPerNode),
                    #choose swamp queue, 4 slots.
                    ]
+        scriptgen = ['cat > ./$HOSTNAME-$JOB_ID-worker.conf <<"EOF"',
+                     
+                     "EOF"]
         pre = ["echo Starting "]
         
         invocation = "%s workerServer.py" % (config.python)
@@ -105,7 +110,7 @@ class SgeClustering:
         batchfile = self.writeTemp(self.scriptFile(config))
         try:
             commandline = "qsub %s" % (batchfile)
-
+            print "commandline",commandline, open(batchfile).read()
             output = Popen(commandline.split(),
                            stdout=PIPE).communicate()[0]
             print "called and got output:", output
@@ -127,17 +132,36 @@ class Config:
         self.masterUrl = returnPath[0]
         self.masterAuth = returnPath[1]
 
-        self.clusteringPlatform = SGEClustering
-        self.slotsPerNode = 4
+        #batch opts
         self.logFile = "swampworkers.log"
         self.queueName = "swampworker"
+        self.clusteringPlatform = SgeClustering
+
+        self.slotsPerNode = "4"
         self.python = "python2.4"
-        self.resultPath = "/tmp"
-        self.bulkPath = "/tmp"
+        self.resultPath = "/tmp/r"
+        self.bulkPath = "/tmp/b"
+        self.sourcePath = "/share/swamp"
         self.scratchPath = "/dev/shm"
         self.localSlots = "4"
         self.port = "8082"
         
+
+"""
+[workers]
+clusteringPlatform = sge
+slotsPerNode = 4
+logFile = "swampworkers.log"
+queueName = "swampworker"
+python = "python2.4"
+# need to verify that a single scratch/result/bulk can be used
+resultPath = "/tmp/r"
+bulkPath = "/tmp/b"
+scratchPath = "/dev/shm"
+port = 8082 #(optional)
+templateConfig = "template.conf"
+
+"""
 
 #
 # current strategy:
