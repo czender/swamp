@@ -112,7 +112,7 @@ class Interface:
         """Get a list of the jobs/workflows tracked by the system"""
         donejobs = self.config.runtimeJobManager.discardedJobs
         def info(task):
-            if task:
+            if task and isinstance(task, SwampTask):
                 state = self.config.runtimeJobManager.taskStateObject(task)
                 
                 return "Task with %d logical outs, submitted %s : %s (%s)" % (

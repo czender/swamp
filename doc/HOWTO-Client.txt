@@ -11,7 +11,7 @@ Notes:
   Well, it might work on Python 2.3.x but you're on your own.  The
   SWAMP service itself requires Python 2.4+
 
-* SOAPpy is required.  
+* SOAPpy is required. +fpconst 
   You need this Python library to send commands to the SWAMP service.  
   Install it via: sudo aptitude install python-soappy 
                OR sudo aptitude install python24-soappy
