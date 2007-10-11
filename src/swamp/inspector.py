@@ -112,9 +112,10 @@ class Interface:
         """Get a list of the jobs/workflows tracked by the system"""
         donejobs = self.config.runtimeJobManager.discardedJobs
         def info(task):
-            if task and isinstance(task, SwampTask):
+            if task:
                 state = self.config.runtimeJobManager.taskStateObject(task)
-                
+                if not state:
+                    return ""
                 return "Task with %d logical outs, submitted %s : %s (%s)" % (
                     len(task.logOuts), time.ctime(task.buildTime),
                     state.name(), str(state.extra))
@@ -162,8 +163,16 @@ class Interface:
         """Check some internal data structures for consistency"""
         versions = [# "Swamp core version: %s" % SwampCoreVersion,
                     "Swamp SOAP interface version: %s" % swamp.SoapInterfaceVersion]
+        # are dirs readable and writable?
+        pathresults = self._checkPaths()
         return self.endl.join([self._handyHeader()] + versions +
                               [ "No checks implemented yet"])
+    def _checkPaths(self):
+        # check for readable source path
+        # check for writable result path
+        # check for writable bulk path
+        # check for writable scratch path
+        pass
 
     def _rawCatalog(self, root=""):
         prefix = self.config.execSourcePath
