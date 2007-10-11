@@ -366,6 +366,7 @@ class Scheduler:
 
 
     def initTransaction(self):
+        log.debug("FIXME: tried to init db transaction.")
         assert self.transaction is None
         jp = self.instanceJobPersistence()
         trans = jp.newPopulationTransaction()
@@ -375,17 +376,19 @@ class Scheduler:
         pass
     
     def schedule(self, parserCommand):
-        if self.transaction is None:
+        if False and self.transaction is None:
             self.initTransaction()
-        self.transaction.insertCmd(parserCommand.referenceLineNum,
-                                   parserCommand.cmd, parserCommand.original)
-        #concrete = logical # defer concrete mapping
-        def insert(f, isOutput):
-            self.transaction.insertInOutDefer(parserCommand.referenceLineNum,
-                                          f, f, isOutput, 1)
+        if False:
+            self.transaction.insertCmd(parserCommand.referenceLineNum,
+                                       parserCommand.cmd, parserCommand.original)
+            #concrete = logical # defer concrete mapping
+            def insert(f, isOutput):
+                self.transaction.insertInOutDefer(parserCommand.referenceLineNum,
+                                                  f, f, isOutput, 1)
+                pass
+            map(lambda f: insert(f, False), parserCommand.inputs)
+            map(lambda f: insert(f, True), parserCommand.outputs)
             pass
-        map(lambda f: insert(f, False), parserCommand.inputs)
-        map(lambda f: insert(f, True), parserCommand.outputs)
         self.cmdList.append(parserCommand)
         pass
 
