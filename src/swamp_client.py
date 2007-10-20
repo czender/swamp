@@ -13,6 +13,7 @@
 import getopt
 import os
 import readline
+import socket
 import sys
 import time
 import urllib
