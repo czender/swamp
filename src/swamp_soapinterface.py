@@ -12,6 +12,8 @@ from swamp_transact import *
 from swamp import log
 import swamp.soapi as soapi
 import swamp.inspector as inspector
+from swamp.execution import LocalExecutor
+from swamp.mapper import FileMapper
 
 # Standard Python imports
 import cPickle as pickle
@@ -64,7 +66,7 @@ class StandardJobManager:
         else:
             config = Config()
         config.read()
-        le = LocalExecutor.newInstance(config)
+        le = LocalExecutor.newInstance(config) #always make one
         self.filemap = FileMapper("f"+str(os.getpid()),
                                   config.execSourcePath,
                                   config.execResultPath,

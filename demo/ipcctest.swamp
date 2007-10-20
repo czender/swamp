@@ -1,0 +1,43 @@
+#!/bin/bash
+# soon, #!/usr/local/bin/swamp_client.py --
+
+
+# switch between local and swamp path roots.
+if [ $SHELL = "swamp" ] ; then 
+  IPCCROOT=/pcmdi
+else
+  exit
+  IPCCROOT=http://user:password@climate.llnl.gov/cgi-bin/dap-cgi.py/ipcc4
+fi
+
+models=(cccma_cgcm3_1 cccma_cgcm3_1_t63 cnrm_cm3 csiro_mk3_0 \
+gfdl_cm2_0 gfdl_cm2_1 giss_aom giss_model_e_r \
+iap_fgoals1_0_g inmcm3_0 ipsl_cm4 miroc3_2_hires miroc3_2_medres \
+miub_echo_g mpi_echam5 mri_cgcm2_3_2a ncar_ccsm3_0 ncar_pcm1 \
+ukmo_hadcm3 )
+
+variables=tas,pr # format for passing to NCO
+scenarios=sresb1 
+
+for scn in $scenarios; do 
+    for mdl in $models; do 
+        ncwa -O -v $variables -w area -a lat,lon \
+        -p $IPCCROOT/$scn/$mdl \
+        pcmdi.ipcc4.$mdl.$scn.run1.atm.mo.xml $scn_$mdl_200001_209912.nc 
+        ncwa -F -d time,1,12 $scn_$mdl_200001_209912.nc $scn_$mdl_2000.nc 
+        ncdiff $scn_$mdl_200001_209912.nc $scn_$mdl_2000.nc $scn_$mdl_anm.nc 
+    done # end loop over model 
+    ncea *_200001_209912.nc $scn_avg_200001_209912.nc 
+    ncwa -F -d time,1,12 $scn_avg_200001_209912.nc $scn_avg_2000.nc 
+    ncdiff $scn_avg_200001_209912.nc $scn_avg_2000.nc $scn_avg_anm.nc 
+done # end loop over scenario
+
+
+
+# The following are available pre-defined variables that you can
+# reference in your scripts.
+# SWAMPVERSION : "0.1+" -- version number, perhaps useful in the future.
+# SWAMPHOSTNAME" : <hostname> -- the hostname for the swamp service,
+#                  probably a fully-qualified domain name (FQDN).
+# SHELL : "swamp" -- This is always set to "swamp" in the SWAMP environment
+

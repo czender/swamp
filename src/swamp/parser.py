@@ -5,7 +5,7 @@ parser - contains general parsing code.
 
 
 """
-# Copyright (c) 2007 Daniel Wang
+# Copyright (c) 2007 Daniel L. Wang, Charles S. Zender
 # This file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
@@ -23,6 +23,16 @@ from pyparsing import *
 from swamp import log
 from swamp.syntax import BacktickParser
 
+class Common:
+    Value = Word(alphanums).setResultsName("realValue")
+    CommandLine = OneOrMore(Word(alphanums + '_-'))
+    
+    BacktickExpr = BacktickParser.backtickString
+    SubValue = BacktickExpr.copy().setResultsName("indValue")
+
+
+    Range = OneOrMore(Value ^ SubValue).setResultsName("range")
+    pass
 
 
 class VariableParser:
@@ -76,6 +86,7 @@ class VariableParser:
                     | self.backtickString
                     | Word(alphanums+"-_/.")
                     | CharsNotIn(" `")
+                    | Literal('(') + Common.Range + Literal(')')
                     )
     
         
@@ -472,6 +483,7 @@ class Parser:
         self.variableParser = VariableParser(self._variables)
         self._context = Parser.BaseContext(self)
         self._rootContext = self._context
+        self.continuation = None
         pass
 
     def updateVariables(self, defs):
@@ -541,12 +553,22 @@ class Parser:
         print "stdAccept reject", argv
         return False
 
-    def parseScriptLine4(self, line):
-        """We're going to give-in and just build a parse tree,
-        deferring all evaluation until later."""
+    def _parseScriptLine4(self, line):
+        """Parse a single script line.
+        We will build a parse tree, deferring all evaluation until later.
+        """
 
         self.lineNum += 1
         cline = self.stripComments(line)
+        if self.continuation:
+            cline = cline + self.continuation
+            self.continuation = None
+        if cline.endswith("\\"): # handle line continuation
+            self.continuation = cline[:-1] # excise backslash
+            return self._context
+        if not cline:
+            return self._context
+        
         (r, nextContext) = self._context.addLine((cline, self.lineNum, line))
         self._context = nextContext
         if not r:
@@ -554,32 +576,10 @@ class Parser:
         return self._context
         
     
-    def parseScriptLine(self, factory, line):
+    def _parseScriptLine(self, factory, line):
         """parse a single script line"""
         # for now, force to test alternate parsing
-        return self.parseScriptLine4(line)
-        def accept(obj, argv):
-            for mod in obj.modules:
-                if mod[0].accepts(argv):
-                    cmd = mod[0].parse(line, argv, obj.lineNum, factory)
-                    return cmd
-            return False
-        self.lineNum += 1
-        line = self.stripComments(line)
-        line = self.variableParser.apply(line)
-        if not isinstance(line, str):
-            return None
-        argv = shlex.split(line)
-        command = accept(self, argv)
-        if isinstance(command, types.InstanceType):
-            command.referenceLineNum = self.lineNum
-            command.original = original
-        
-        if not command:
-            log.debug(" ".join(["reject:", str(len(argv)), str(argv)]))
-        elif self.handleFunc is not None:
-            self.handleFunc(command)
-        return command
+        return self._parseScriptLine4(line)
     
     def parseScript(self, script, factory):
         """Parse and accept/reject commands in a script, where the script
@@ -587,7 +587,7 @@ class Parser:
         self._factory = factory
         lineCount = 0
         for line in script.splitlines():
-            self.parseScriptLine(factory, line)
+            self._parseScriptLine(factory, line)
             lineCount += 1
             if (lineCount % 500) == 0:
                 log.debug("%d lines parsed" % (lineCount))
@@ -633,10 +633,6 @@ class Parser:
         
     ## a few helper classes for Parser.
     class BaseContext:
-        #loopStart = Parser.LoopContext.Expr.ForHeading
-        #ifStart = Parser.BranchContext.Expr.IfHeading
-        #ourFlowParsers = [(loopStart.parseString, Parser.LoopContext),
-        #                  (ifStart.parseString, Parser.BranchContext)]
         
         def __init__(self, parser):
             """handler is a function that accepts a Command instance
@@ -921,14 +917,7 @@ class Parser:
             Semicolon = Literal(';')
             Identifier = VariableParser.identifier.copy()
             Identifier = Identifier.setResultsName("identifier")
-            Value = Word(alphanums).setResultsName("realValue")
-            CommandLine = OneOrMore(Word(alphanums + '_-'))
-            #BacktickExpr = Literal('`') + CommandLine + Literal('`')
-            BacktickExpr = BacktickParser.backtickString
-            SubValue = BacktickExpr.copy().setResultsName("indValue")
-
-
-            Range = OneOrMore(Value ^ SubValue).setResultsName("range")
+            Range = Common.Range
             ForHeading = For + Identifier + In + Range + Semicolon + Do
             ForHeading2_1 = For + Identifier + In + Range
             ForHeading2_2 = Do
