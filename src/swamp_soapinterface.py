@@ -234,8 +234,8 @@ class StandardJobManager:
             task.outMap.mapReadFile(f[1]))), # find output localfile
                        outs) #start from logical outs.
 
-        log.debug("polloutputs: outs "+str(outs))
-        log.debug("polloutputs: outUrls "+str(outUrls))
+        #log.debug("polloutputs: outs "+str(outs))
+        #log.debug("polloutputs: outUrls "+str(outUrls))
 
         return outUrls
 
@@ -251,8 +251,11 @@ class StandardJobManager:
         #map(self.fileMapper.discardLogical, fList)
 
     def discardFlow(self, token):
+        log.debug("startdiscard 1")
         task = self.jobs[token]
-        task.outMap.cleanPhysicals()
+        log.debug("startdiscard 2")
+        task.cleanPhysicals()
+        log.debug("startdiscard 3")
         self.discardedJobs[token] = self.jobs.pop(token)
         log.debug("discarding for token %d" %(token))
         pass

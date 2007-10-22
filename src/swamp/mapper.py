@@ -10,6 +10,7 @@ mapper - contains code for bookkeeping file maps
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
 import os
+from swamp import log
 
 class FileMapper:
     def __init__(self, name, readParent, writeParent, bulkParent,
@@ -77,6 +78,7 @@ class FileMapper:
             os.unlink(p)
             log.debug("Unlink OK: %s (%s)" %(f,p))
         self.logical.pop(p)
+
     
     def cleanPhysicals(self):
         physicals = self.logical.keys()
