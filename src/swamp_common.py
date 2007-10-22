@@ -193,7 +193,7 @@ class CommandFactory:
         s = inputFilename.lstrip("/")
         res = glob.glob(s)
         res.sort() # sort the wildcard expansion.
-        print "glob: ", res, s, self.config.execSourcePath
+        #print "glob: ", res, s, self.config.execSourcePath
         #logging.error("globbing %s from %s"%(inputFilename,os.curdir))
         #logging.error("-- %s --%s"%(str(res),str(glob.glob("camsom1pdf/*"))))
         os.chdir(save)
@@ -388,7 +388,7 @@ class Scheduler:
 
     def _graduateAction(self, cmd):
         self.cmdsFinished.append(cmd)
-        print "scheduler finished cmd", cmd
+        #print "scheduler finished cmd", cmd
         return self._graduateHook(cmd)
 
     
