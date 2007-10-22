@@ -388,6 +388,7 @@ class Scheduler:
 
     def _graduateAction(self, cmd):
         self.cmdsFinished.append(cmd)
+        print "scheduler finished cmd", cmd
         return self._graduateHook(cmd)
 
     
@@ -530,6 +531,9 @@ class SwampTask:
         result = {"executedCount" : len(s.cmdsFinished),
                   "commandCount" : len(s.cmdList)}
         return result
+
+    def cleanPhysicals(self):
+        self.outMap.cleanPhysicals()
 
     def selfDestruct(self):
         log.debug("Task %d is self-destructing" %(str(self.scheduler.taskId)))

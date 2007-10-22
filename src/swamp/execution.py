@@ -236,7 +236,7 @@ class ParallelDispatcher:
             # than self.running
             r = e.pollAny()
             if r is not None:
-                log.debug("dispatcher pollany ok: "+str(r))
+                #log.debug("dispatcher pollany ok: "+str(r))
                 self._graduate((e, r[0]), r[1], hook)
                 return ((e, r[0]), r[1])
         return None
@@ -341,7 +341,8 @@ class LocalExecutor:
     def busy(self):
         # soon, we should put code here to check for process finishes and
         # cache their results.
-        log.debug("%s busy %d/%d" %(str(self), len(self.running), self.slots))
+        log.debug("Exec(%d) busy %d/%d" %(os.getpid(),
+                                          len(self.running), self.slots))
         return len(self.running) >= self.slots
 
     def launch(self, cmd, locations=[]):
@@ -362,6 +363,7 @@ class LocalExecutor:
                                       self.filemap.mapWriteFile)
         log.debug("%d-exec-> %s" % (token," ".join(cmdLine)))
         # make sure there's room to write the output
+        log.debug("clearing to make room for writing (should be using concretefiles")
         self.clearFiles(map(lambda t: t[1], cmd.actualOutputs))
         pid = self.resistErrno513(os.P_NOWAIT,
                                   self.binaryFinder(cmd), cmdLine)
@@ -445,16 +447,15 @@ class LocalExecutor:
     def fetchedSrcs(self,token):
         return self.rFetchedFiles[token]
 
-    def discardFile(self, file):
-        log.debug("req discard of %s on %s" %(file, self.url))
-        self.actual.pop(file)
-        self.rpc.discardFile(file)
+    def discardFile(self, f):
+        self.filemap.discardLogical(f)
 
     def discardFilesIfHosted(self, files):
-        return self.clearFiles(files)
+        # need to map to actual locations first.
+        mappedfiles = map(self.filemap.mapReadFile, files)
+        return self.clearFiles(mappedfiles)
 
     def clearFiles(self, filelist):
-        print "I want to clear", filelist
         for f in filelist:
             if os.access(f, os.F_OK):
                 if os.access(f, os.W_OK):
