@@ -62,9 +62,9 @@ class Interface:
         
         
     def _buildUrl(self, action):
-        return  "http://%s:%d/%s?action=%s" % (self.config.serverHostname,
-                                        self.config.serverPort,
-                                        self.config.serverInspectPath,
+        return  "http://%s:%d/%s?action=%s" % (self.config.serviceHostname,
+                                        self.config.serviceSoapPort,
+                                        self.config.serviceInspectPath,
                                         action)
 
     def _handyHeader(self):
@@ -99,7 +99,7 @@ class Interface:
         """(debug)prints the available env vars"""
         result = [ self._handyHeader()]
         result.append("<pre>")
-        if self.config.serverMode not in ["debug","testing"]:
+        if self.config.serviceLevel not in ["debug","testing"]:
             result.append("Only available in debug or testing service modes.")
         else:
             for k in os.environ:
@@ -238,7 +238,7 @@ class Interface:
     def hardReset(self, form):
         """UNSAFELY restarts server process.(DANGEROUS)"""
 
-        if self.config.serverMode != "debug":
+        if self.config.serviceLevel != "debug":
             return "".join([self._handyHeader(),
                          "Error, debugging is disabled."])
         else:
@@ -262,7 +262,7 @@ class Interface:
 
     def spawnWorker(self, form):
         """Development place to request additional workers"""
-        if self.config.serverMode != "debug":
+        if self.config.serviceLevel != "debug":
             return "".join([self._handyHeader(),
                          "Error, debugging is disabled."])
         from swamp.clustering import Cluster
