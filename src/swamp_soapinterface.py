@@ -71,11 +71,11 @@ class StandardJobManager:
                                   config.execSourcePath,
                                   config.execResultPath,
                                   config.execResultPath)
-        self.resultExportPref = "http://%s:%d/%s/" % (config.serverHostname,
-                                                      config.serverPort,
-                                                      config.serverFilePath)
+        self.resultExportPref = "http://%s:%d/%s/" % (config.serviceHostname,
+                                                      config.servicePort,
+                                                      config.servicePubPath)
 
-        self.publishedPaths = [(config.serverFilePath,
+        self.publishedPaths = [(config.servicePubPath,
                                 config.execResultPath)]
         self.publishedFuncs = [self.reset,
                                self.newScriptedFlow, self.discardFlow,
@@ -104,7 +104,7 @@ class StandardJobManager:
         interface.updateVariablePreload({
             "SWAMPVERSION" : "0.1+",
             "SHELL" : "swamp",
-            "SWAMPHOSTNAME" : self.config.serverHostname,
+            "SWAMPHOSTNAME" : self.config.serviceHostname,
             })
         return
 
@@ -112,10 +112,10 @@ class StandardJobManager:
         # Clean up trash from before:
         # - For now, don't worry about checking jobs still in progress
         # - Delete all the physical files we allocated in the file mapper
-        if self.config.serverMode == "production":
+        if self.config.serviceLevel == "production":
             log.info("refusing to do hard reset: unsafe for production")
             return
-        assert self.config.serverMode in ["debug","testing"]
+        assert self.config.serviceLevel in ["debug","testing"]
         log.info("Reset requested--disabled")
         #self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
@@ -137,7 +137,7 @@ class StandardJobManager:
 
         It's very handy during development, though."""
 
-        if self.config.serverMode != "debug":
+        if self.config.serviceLevel != "debug":
             return "Error, debugging is disabled."
 
         try:
@@ -261,12 +261,12 @@ class StandardJobManager:
         pass
 
     def startTwistedServer(self):
-        self.config.serverInspectPath = "inspect"
+        self.config.serviceInspectPath = "inspect"
         custom = [("inspect", inspector.newResource(self.config))]
         self.config.runtimeJobManager = self
-        s = soapi.Instance((self.config.serverHostname,
-                            self.config.serverPort,
-                            self.config.serverPath), 
+        s = soapi.Instance((self.config.serviceHostname,
+                            self.config.servicePort,
+                            self.config.serviceSoapPath), 
                            self.publishedPaths,
                            self.publishedFuncs,
                            custom)
@@ -308,8 +308,8 @@ def clientTest():
     serverConf = Config("swampsoap.conf")
     serverConf.read()
     server = SOAPpy.SOAPProxy("http://localhost:%d/%s"
-                              %(serverConf.serverPort,
-                                serverConf.serverPath))
+                              %(serverConf.servicePort,
+                                serverConf.serviceSoapPath))
     if len(sys.argv) > 2:
         import readline
         while True:

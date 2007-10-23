@@ -340,7 +340,7 @@ class JobManager:
         self.registerThread.active = False
 
     def listenTwisted(self):
-        self.config.serverInspectPath = "inspect"
+        self.config.serviceInspectPath = "inspect"
         custom = [("inspect", inspector.newResource(self.config))]
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,

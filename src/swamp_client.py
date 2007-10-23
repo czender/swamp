@@ -200,6 +200,8 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         except socket.error, e:
             print "Error connecting to server.  Check URL:", self.serverUrl
             print "Other possible reasons: firewalling, server downtime"
+            print "Aborting script submission."
+            return
         print "Submitted", scriptfile
 
         ret = None
