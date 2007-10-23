@@ -163,46 +163,7 @@ class JobManager:
 
     def _modeSetup(self, mode):
         if mode == "worker":
-            scratchSub = "s"
-            bulkSub = "b"
-            self.fileMapper = FileMapper("slave%d"%os.getpid(),
-                                         self.config.execSourcePath,
-                                         self.config.execScratchPath,
-                                         self.config.execBulkPath)
-            self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
-                                           self.fileMapper)
-
-            # auto-determine hostname?
-            if self.config.serviceHostname == "<auto>": 
-                name = self._checkHostname(self.config.masterUrl)
-                if name:
-                    self.config.serviceHostname = name
-
-
-            # prefixes for remapping.
-            self.exportPrefix = "http://%s:%d/%s" % (self.config.serviceHostname,
-                                                     self.config.servicePort,
-                                                     self.config.servicePubPath)
-            self.scratchExportPref = self.exportPrefix + scratchSub + "/"
-            self.bulkExportPref = self.exportPrefix + bulkSub + "/"
-            self.soapUrl = "http://%s:%d/%s" % (self.config.serviceHostname,
-                                                self.config.servicePort,
-                                                self.config.serviceSoapPath)
-
-            self.publishedFuncs = [self.reset, self.slaveExec,
-                                   self.pollState, self.pollStateMany,
-                                   self.pollOutputs,
-                                   self.discardFile, self.discardFiles,
-                                   self.ping
-                                   ]
-            self.publishedPaths = [(self.config.servicePubPath + scratchSub,
-                                    self.config.execScratchPath),
-                                   (self.config.servicePubPath + bulkSub,
-                                    self.config.execBulkPath)]
-            target = (self.config.masterUrl, self.config.masterAuth)
-            offer = (self.soapUrl, self.config.execLocalSlots)
-            self.registerThread = WorkerConnector(target, offer)
-            self.lateInit = self.registerThread.start
+            return self._setupWorker()
             pass
         elif mode == "master":
             log.error("Frontend/master code not migrated yet..")
@@ -211,6 +172,54 @@ class JobManager:
             log.error("Invalid server mode, don't know what to do.")
             print 'Panic! Invalid server mode, expecting "worker" or "master"'
             return
+
+    def _setupWorker(self):
+        scratchSub = "s"
+        bulkSub = "b"
+        self.fileMapper = FileMapper("slave%d"%os.getpid(),
+                                     self.config.execSourcePath,
+                                     self.config.execScratchPath,
+                                     self.config.execBulkPath)
+        self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
+                                       self.fileMapper)
+        
+        # auto-determine hostname?
+        if self.config.serviceHostname == "<auto>": 
+            name = self._checkHostname(self.config.masterUrl)
+            if name:
+                self.config.serviceHostname = name
+
+
+        # prefixes for remapping.
+        self.exportPrefix = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                                 self.config.servicePort,
+                                                 self.config.servicePubPath)
+        self.scratchExportPref = self.exportPrefix + scratchSub + "/"
+        self.bulkExportPref = self.exportPrefix + bulkSub + "/"
+        self.soapUrl = "http://%s:%d/%s" % (self.config.serviceHostname,
+                                            self.config.servicePort,
+                                            self.config.serviceSoapPath)
+
+        self.publishedFuncs = [self.reset, self.slaveExec,
+                               self.pollState, self.pollStateMany,
+                               self.pollOutputs,
+                               self.discardFile, self.discardFiles,
+                               self.ping
+                               ]
+        self.publishedPaths = [(self.config.servicePubPath + scratchSub,
+                                self.config.execScratchPath),
+                               (self.config.servicePubPath + bulkSub,
+                                self.config.execBulkPath)]
+        target = (self.config.masterUrl, self.config.masterAuth)
+        offer = (self.soapUrl, self.config.execLocalSlots)
+        self.registerThread = WorkerConnector(target, offer)
+        self.lateInit = self.registerThread.start
+        pass
+
+    def _setupMaster(self):
+        pass
+    
+
 
     def _checkHostname(self, target):
         """

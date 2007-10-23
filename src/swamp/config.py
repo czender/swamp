@@ -25,12 +25,6 @@ class Config:
                "/home/wangd/opendap/iroot/ssdap.log"),
               ("logLevel", "log", "level", logging.DEBUG),
 
-#               ("serverHostname", "server", "hostname", "localhost"),
-#               ("serverPort", "server", "port", 8081),
-#               ("serverPath", "server", "path", "SOAP"),
-#               ("serverFilePath", "server", "filePath", "datapath"),
-#               ("serverMode", "server", "mode", "production"),
-              
               ("execNco4", "exec", "nco4",
                "/home/wangd/opendap/iroot/nco_ncdf4_bin"),
               ("execNcoDap", "exec", "ncodap",

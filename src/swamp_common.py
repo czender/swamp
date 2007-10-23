@@ -47,7 +47,7 @@ from swamp.parser import Parser
 from swamp import log
 from swamp.execution import ParallelDispatcher
 from swamp.mapper import LinkedMap
-
+import swamp.statistics as statistics
 
 def isRemote(filepath):
     return filepath.startswith("http://")
@@ -154,6 +154,7 @@ class CommandFactory:
         self.scriptOuts = set() # list of script-defined outputs
         # scriptOuts is logicalOutByScript.keys(), except in ordering
         self.scrFileUseCount = {}
+        self.scriptIns = set()
         pass
 
     def mapInput(self, scriptFilename):
@@ -168,6 +169,7 @@ class CommandFactory:
         else:
             inList = self.expandConcreteInput(scriptFilename)
             if inList:
+                self.scriptIns.update(inList)
                 return inList
             else:
                 log.error("%s is not allowed as an input filename"
@@ -441,17 +443,19 @@ class SwampTask:
         #FIXME: need to define publishIfOutput
         self.scheduler = Scheduler(config, self._publishIfOutput)
         self.parser.commandHandler(self.scheduler.schedule)
-        self.commandFactory = CommandFactory(self.config)
+        self._commandFactory = CommandFactory(self.config)
         self.buildTime = time.time()
         self.fail = None
         if not customizer(self.parser,
                           self.scheduler,
-                          self.commandFactory):
+                          self._commandFactory):
             self.fail = "Error applying frontend customization."
             return
 
         self.remoteExec = remote
         self.outMap = LinkedMap(outMap, self.taskId())
+        self._publishedFiles = []
+        self.stat = statistics.tracker().scriptStart((self.taskId(), script, self))
         try:
             self._parseScript(script)
         except StandardError, e:
@@ -460,11 +464,11 @@ class SwampTask:
 
     def _parseScript(self, script):
         log.debug("Starting parse")
-        self.parser.parseScript(script, self.commandFactory)
+        self.parser.parseScript(script, self._commandFactory)
         log.debug("Finish parse")
         self.scheduler.finish()
         log.debug("finish scheduler prep")
-        self.scrAndLogOuts = self.commandFactory.realOuts()
+        self.scrAndLogOuts = self._commandFactory.realOuts()
         self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
         log.debug("outs are " + str(self.scrAndLogOuts))
         pass
@@ -508,6 +512,8 @@ class SwampTask:
                 shutil.move(actual, target)
                 # FIXME: ping the new mapper so that it's aware of the file.
                 log.debug("Published " + actual)
+            self._publishedFiles.append((t[0], os.stat(target).st_size))
+
         pass
     def taskId(self):
         return self.scheduler.taskId
@@ -518,6 +524,13 @@ class SwampTask:
         else: # refuse to run if we have a failure logged.
             log.debug("refusing to dispatch: " + str(self.result()))
             pass
+        self.stat.stop()
+        self.stat.outputFiles(self._publishedFiles)
+        self.stat.inputFiles(map(lambda x: (x,
+                                            os.stat(self.config.execSourcePath
+                                                    +"/"+x).st_size),
+                                 self._commandFactory.scriptIns))
+        self.stat.finish()
         pass
 
     def result(self):
@@ -545,14 +558,17 @@ class SwampInterface:
     thread runs whatever tasks are queued up."""
     def __init__(self, config, executor=None):
         self.config = config
+        #setup logger
         cfile = logging.FileHandler(self.config.logLocation)
         formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
         cfile.setFormatter(formatter)
         log.addHandler(cfile)
         log.setLevel(self.config.logLevel)
-        log.info("Swamp master logging at "+self.config.logLocation)
+        log.info("Swamp master logging at " + self.config.logLocation)
         self.config.dumpSettings(log, logging.DEBUG)
-        
+
+        statistics.initTracker(config)
+
         if executor:
             self.defaultExecutor = executor
         else:
