@@ -21,6 +21,7 @@ import getopt
 import logging
 import os
 import sys
+import thread
 import threading
 
 # (semi-) third-party imports
@@ -35,25 +36,16 @@ import twisted.web.static as tStatic
 import swamp
 swamp.SoapInterfaceVersion = "$Id$"
 
-
 class LaunchThread(threading.Thread):
-
-    def __init__(self, swampint, script, filemap, updateFunc):
-        threading.Thread.__init__(self) 
-        self.script = script
-        self.swampInterface = swampint
+    def __init__(self, launchFunc, updateFunc):
+        threading.Thread.__init__(self)
+        self.launchFunc = launchFunc
         self.updateFunc = updateFunc
-        self.filemap = filemap
-        pass
-
+        
     def run(self):
         self.updateFunc(self) # put myself as placeholder
-        log.info("Starting workflow execution")
-        task = self.swampInterface.submit(self.script, self.filemap)
-        log.info("Admitted workflow: workflow id=%s" % task.taskId())
-        # should update with an object that can be used to
-        #query for task state.
-        self.updateFunc(task) # update with real object
+        self.updateFunc(self.launchFunc()) # update with real token
+
 
 class StandardJobManager:
     """StandardJobManager manages submitted tasks dispatched by this system.
@@ -80,7 +72,7 @@ class StandardJobManager:
         self.publishedFuncs = [self.reset,
                                self.newScriptedFlow, self.discardFlow,
                                self.pollState, self.pollOutputs,
-                               self.pollJob,
+                               #self.pollJob,
                                self.pyInterface,
                                self.registerWorker,
                                self.unregisterWorker]
@@ -150,19 +142,27 @@ class StandardJobManager:
 
     def _updateToken(self, token, etoken):
         self.jobs[token] = etoken
+
+    def _launchScript(self, script, token):
+        self._updateToken(token, thread.get_ident()) # put in a placeholder
+        log.info("Admitting workflow for execution")
+        task = self.swampInterface.submit(script, self.filemap)
+        log.info("Admitted workflow: workflow id=%s" % task.taskId())
+        self._updateToken(token, task)
+        return task
         
     def _threadedLaunch(self, script, token):
-        launchthread = LaunchThread(self.swampInterface, script,
-                                    self.filemap,
-                                    lambda x: self._updateToken(token, x))
-        launchthread.start()
-        log.debug("started launch")
-        #launchthread.join()
+        """this is pretty easy to merge: just think about the right
+        point to parameterize."""
+        launch = lambda : self._launchScript(script, token)
+        update = lambda x: x
+        thread = LaunchThread(launch, update)
+        thread.start()
         return 
 
     def taskStateObject(self, task):
         token = -1 # use dummy token for now.
-        if isinstance(task, threading.Thread):
+        if isinstance(task, int):
             return SwampTaskState.newState(token, "submitted")
         if isinstance(task, SwampTask):
             r = task.result()
@@ -184,11 +184,17 @@ class StandardJobManager:
         return None
 
     def pollState(self, token):
+        """ this can be merged soon"""
         if token not in self.jobs:
             time.sleep(0.2) # possible race
             if token not in self.jobs:
                 log.warning("token not ready after waiting.")
-                return SwampTaskState.newState(token, "missing").packed()
+                if self.config.serviceMode == "master":
+                    return SwampTaskState.newState(token, "missing").packed()
+                else:
+                    return None
+        if self.config.serviceMode != "master":
+            log.error("pollState not implemented here yet")
         stateObject = self.taskStateObject(self.jobs[token])
         stateObject.token = token
         if not stateObject:
@@ -200,21 +206,6 @@ class StandardJobManager:
 
     def pollStateMany(self, tokenList):
         return map(self.pollState, tokenList)
-
-    def pollJob(self, token):
-        """poll a job, using a job token"""
-        if isinstance(self.jobs[token], SwampTask):
-            task = self.jobs[token]
-            
-            r = task.result()
-            if r == True:
-                return [0,""]
-            elif r != None:
-                return [1, r]
-        else:
-            return None
-        
-
 
 
     def actualToPub(self, f):
