@@ -69,7 +69,7 @@ class Command:
         self.outputs = inouts[1]
         self.parents = parents
         self.referenceLineNum = referenceLineNum
-        self.actualOutputs = []
+        self.actualOutputs = [] # [(logifile,physfile[,size]),...]
         self.children = []
         self.factory = None
         self.inputSrcs = []
@@ -389,6 +389,10 @@ class Scheduler:
         pass
 
     def _graduateAction(self, cmd):
+        # save file size data.
+        cmd.actualOutputs = map(lambda x: (x[0],x[1], os.stat(x[1]).st_size),
+                                cmd.actualOutputs)
+        print "produced outputs:", cmd.actualOutputs
         self.cmdsFinished.append(cmd)
         #print "scheduler finished cmd", cmd
         return self._graduateHook(cmd)
@@ -530,6 +534,7 @@ class SwampTask:
                                             os.stat(self.config.execSourcePath
                                                     +"/"+x).st_size),
                                  self._commandFactory.scriptIns))
+        self.stat.commandList(self.scheduler.cmdList)
         self.stat.finish()
         pass
 
