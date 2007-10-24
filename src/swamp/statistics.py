@@ -13,6 +13,7 @@
 
 
 # Standard Python imports
+import operator
 import time
 
 # (semi-) third-party imports
@@ -34,13 +35,28 @@ class ScriptStatistic:
 
     def outputFiles(self, filesizelist):
         """record measurements on output files"""
-        #print "calc out from",filesizelist
+        self.outputs = filesizelist
         self.outputSize = reduce(lambda x,y: x + y[1], filesizelist, 0)
 
     def inputFiles(self, filesizelist):
         """record measurements on input files"""
-        #print "calc in from",filesizelist
+        self.inputs = filesizelist
         self.inputSize = reduce(lambda x,y: x + y[1], filesizelist, 0)
+        
+    def commandList(self, clist):
+        def printC(cmd):
+            print "cmd has inputs", cmd.inputs, "and outputs",cmd.actualOutputs
+            pass
+        self.cmdList = clist
+        #map(printC, clist)
+        w = self._findWidth(clist)
+        outs = set()
+        map(lambda c: outs.update(c.actualOutputs), clist)
+        finalouts = set(map(lambda x: x[0], self.outputs))
+        intermeds = filter(lambda x: x[0] not in finalouts, outs)
+        #print "finalouts:",finalouts
+        #print "intermeds:",intermeds
+        self.intermedSize = reduce(lambda x,y: x + y[2], intermeds, 0)
 
     def stop(self):
         self.finishTime = time.time()        
@@ -56,10 +72,34 @@ class ScriptStatistic:
         print "flush script", self.runTime, "seconds"
         print "output size", self.outputSize
         print "input size", self.inputSize
+        print "intermediate size", self.intermedSize
+        print "overall tree width", self.dagWidth
         
         
     def lessThanEqual(self, rhs):
         return self.startTime < rhs.startTime
+
+    def _findWidth(self, clist):
+        """not working properly right now."""
+        self._traversed = set()
+        def traverse(cmd):
+            if cmd in self._traversed:
+                return 0
+            return self._findNodeWidth(cmd)
+        width = reduce(operator.add, map(traverse, clist), 0)
+        self.dagWidth = width
+        return width
+
+    def _findNodeWidth(self, node):
+        width = 1
+        if node.children:
+            relevantchildren = set(node.children).difference(self._traversed)
+            width = reduce(operator.add,
+                           map(self._findNodeWidth, relevantchildren),
+                           0)
+        self._traversed.add(node)
+        print "width of cmd line", node.referenceLineNum," is", width
+        return width
 
 class Tracker:
     """A context for tracking statistics.  This is the top-level
