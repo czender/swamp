@@ -63,7 +63,7 @@ class Interface:
         
     def _buildUrl(self, action):
         return  "http://%s:%d/%s?action=%s" % (self.config.serviceHostname,
-                                        self.config.serviceSoapPort,
+                                        self.config.servicePort,
                                         self.config.serviceInspectPath,
                                         action)
 
@@ -116,9 +116,12 @@ class Interface:
                 state = self.config.runtimeJobManager.taskStateObject(task)
                 if not state:
                     return ""
-                return "Task with %d logical outs, submitted %s : %s (%s)" % (
-                    len(task.logOuts), time.ctime(task.buildTime),
-                    state.name(), str(state.extra))
+                try:
+                    return "Task with %d logical outs, submitted %s : %s (%s)" % (
+                        len(task.logOuts), time.ctime(task.buildTime),
+                        state.name(), str(state.extra))
+                except:
+                    return "Task (incomplete)"
             else:
                 return ""
         def fixlist(items):
