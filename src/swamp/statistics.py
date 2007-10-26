@@ -98,7 +98,7 @@ class ScriptStatistic:
                            map(self._findNodeWidth, relevantchildren),
                            0)
         self._traversed.add(node)
-        print "width of cmd line", node.referenceLineNum," is", width
+        #print "width of cmd line", node.referenceLineNum," is", width
         return width
 
 class Tracker:
