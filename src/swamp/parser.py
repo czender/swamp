@@ -24,14 +24,31 @@ from swamp import log
 from swamp.syntax import BacktickParser
 
 class Common:
-    Value = Word(alphanums).setResultsName("realValue")
+    Quoteclass = "[\"\']"
+    Identifier = Word(alphas, alphanums+"_")
+    UnpReference = Literal("$").suppress() + Identifier
+    ProtReference = Literal("${").suppress() + Identifier + Literal("}").suppress()
+    Sreference = ProtReference | UnpReference
+    # should support double-quoted references
+    Reference = Sreference
+
+    Value = Word(alphanums+"_").setResultsName("realValue")
     CommandLine = OneOrMore(Word(alphanums + '_-'))
     
     BacktickExpr = BacktickParser.backtickString
     SubValue = BacktickExpr.copy().setResultsName("indValue")
 
 
-    Range = OneOrMore(Value ^ SubValue).setResultsName("range")
+    Range = OneOrMore(Value ^ SubValue ^ Reference).setResultsName("range")
+    @staticmethod
+    def p(t):
+        print "rangetoks",t
+        return t
+    #Range.setParseAction(lambda s,l,t: [Common.p(t)])
+    RangeAssignment = Literal('(').suppress() + Range + Literal(')').suppress()
+    #ident = "[A-Za-z]\w*"
+    #backtickString = Literal("`") + CharsNotIn("`") + Literal("`")
+
     pass
 
 
@@ -44,15 +61,6 @@ class VariableParser:
     http://www.opengroup.org/onlinepubs/009695399/toc.htm
     http://www.opengroup.org/onlinepubs/007904975/toc.htm
     """
-    ident = "[A-Za-z]\w*"
-    quoteclass = "[\"\']"
-    identifier = Word(alphas, alphanums+"_")
-    unpReference = Literal("$").suppress() + identifier
-    protReference = Literal("${").suppress() + identifier + Literal("}").suppress()
-    sReference = protReference | unpReference
-    # should support double-quoted references
-    reference = sReference
-    #backtickString = Literal("`") + CharsNotIn("`") + Literal("`")
     
     def __init__(self, varmap):
         self.varMap = varmap ## varMap is exposed/public.
@@ -68,9 +76,10 @@ class VariableParser:
             else:
                 return " ".join(tok)
         def refParseAction(s, loc, toks):
+            #print "s:",s,"loc",loc,"toks",toks
             return [flattenReference(self.varMap[t]) for t in toks]
 
-        reference = VariableParser.reference.copy()
+        reference = Common.Reference.copy()
         # lookup each substitution reference in the dictionary
         reference.setParseAction(refParseAction)
         dblQuoted = dblQuotedString.copy()
@@ -85,13 +94,13 @@ class VariableParser:
                     | self.sglQuoted
                     | self.backtickString
                     | Word(alphanums+"-_/.")
-                    | CharsNotIn(" `")
-                    | Literal('(') + Common.Range + Literal(')')
+                    | Common.RangeAssignment
+                    | CharsNotIn(" `")                    
                     )
     
         
         varDefinition = Optional(Literal("export ")).suppress() \
-                        + VariableParser.identifier \
+                        + Common.Identifier \
                         + Literal("=").suppress() + varValue
 
         def assign(lhs, rhs):
@@ -107,7 +116,7 @@ class VariableParser:
                                      assign(toks[0], toks[1:]))
         self.arithExpr = self.makeCalcGrammar()
         varArithmetic = Literal("let ").suppress() \
-                        + VariableParser.identifier \
+                        + Common.Identifier \
                         + Literal("=").suppress() + self.arithExpr
         def arithAssign(lhs,rhs):
             assign(lhs, str(eval("".join(rhs))))
@@ -143,7 +152,7 @@ class VariableParser:
         rpar  = Literal( ")" )
         addop  = Literal( "+" ) | Literal( "-" )
         multop = Literal("*") | Literal("/")
-        identifier = VariableParser.identifier.copy()
+        identifier = Common.Identifier.copy()
         identifier.setParseAction(lambda s,loc,toks:
                                   [self.varMap[t] for t in toks])
         
@@ -159,24 +168,7 @@ class VariableParser:
         return expr
 
 
-    @staticmethod
-    def expand(token):
-        return
-        x = re.match(VariableParser.quoteclass, token)
-        if x is not None:
-            (start,end) = x.span()
-            if x[start] == "\"":
-                # doublequote
-                close = x.find("\"", end)
-                if close is None:
-                    return StandardError("Parse error.")
-                substr = x[start:end]
-                return token[:start] 
-            pass
-        pass
-
     def varSub(self, fragment):
-        #print self.reference.transformString(fragment)
         
         return self.reference.transformString(fragment)
     def varDef(self, fragment):        
@@ -193,13 +185,15 @@ class VariableParser:
         pass
     def expand2(self, fragment):
         return self.varSub(fragment)
+
     def quoteSplit(self, fragment):
         quoted = sglQuoted | doubleQuoted
         scanString
+
     def apply(self, fragment):
         fragment = self.expand2(fragment)
         #print "try ", fragment
-        identifier = VariableParser.identifier.copy()
+        identifier = Common.Identifier.copy()
         def tryconvert(v):
             if v in self.varMap:
                 return self.varMap[v]
@@ -360,6 +354,7 @@ class NcoParser:
 
     @staticmethod
     def parse(original, argv, lineNumber=0, factory=None):
+        log.debug("building cmd from: %s" %original)
         cmd = argv[0]
         (argList, leftover) = NcoParser.specialGetOpt(argv)
         argDict = dict(argList)
@@ -407,6 +402,8 @@ class NcoParser:
             inlist.append(adict["-S"])
         # now patch all the inputs
         if inPrefix is not None:
+            if not inPrefix.endswith(os.sep):
+                inPrefix = inPrefix + os.sep
             inlist = [(inPrefix + x) for x in inlist]
         return (inlist,[ofname])
         pass
@@ -561,10 +558,12 @@ class Parser:
         self.lineNum += 1
         cline = self.stripComments(line)
         if self.continuation:
-            cline = cline + self.continuation
+            cline = self.continuation + cline
+            print "continuation concat:", cline
             self.continuation = None
         if cline.endswith("\\"): # handle line continuation
             self.continuation = cline[:-1] # excise backslash
+            print "continuation detect:", cline
             return self._context
         if not cline:
             return self._context
@@ -680,7 +679,7 @@ class Parser:
             If = Literal("if")
             Elif = Literal("elif")
 
-            Reference = VariableParser.reference
+            Reference = Common.Reference
 
             #FIXME: can we use a looser definition?
             PlainString = Word(alphanums + "_,.")  
@@ -915,7 +914,7 @@ class Parser:
             Do = Literal('do')
             Done = Literal('done')
             Semicolon = Literal(';')
-            Identifier = VariableParser.identifier.copy()
+            Identifier = Common.Identifier.copy()
             Identifier = Identifier.setResultsName("identifier")
             Range = Common.Range
             ForHeading = For + Identifier + In + Range + Semicolon + Do
@@ -947,14 +946,20 @@ class Parser:
         def _unroll(self, evalContext):
             varname = self._loopHeading["identifier"]
             iterations = []
+            #apply variable substitution
+            ##################################################
+            line = evalContext.variableParser.apply(self._openLine[0])
             # detect additional expansion.
             bb = BacktickParser()
             expr = BacktickParser.backtickString.copy()
             expr.setParseAction(bb.transformQuoted)
             # transform potential backticks
-            xf = expr.transformString(self._openLine[0])
+            #print "line",line
+            xf = expr.transformString(line)
+            #print "xf",xf
             newone = self.Expr.ForHeading.parseString(xf)
             rr = newone["range"]
+            print "loop range is ",rr, type(rr)
             for val in rr:
                 evalContext.variableParser.varMap[varname] = val
                 iterations.extend(self._iterateLoop(evalContext))
