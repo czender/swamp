@@ -93,7 +93,7 @@ class VariableParser:
         varValue = (self.dblQuoted
                     | self.sglQuoted
                     | self.backtickString
-                    | Word(alphanums+"-_/.")
+                    | Word(alphanums+"-_/.,")
                     | Common.RangeAssignment
                     | CharsNotIn(" `")                    
                     )
