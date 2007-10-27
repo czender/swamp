@@ -56,7 +56,11 @@ class ScriptStatistic:
         intermeds = filter(lambda x: x[0] not in finalouts, outs)
         #print "finalouts:",finalouts
         #print "intermeds:",intermeds
-        self.intermedSize = reduce(lambda x,y: x + y[2], intermeds, 0)
+        self.intermedSize = -1
+        try:
+            self.intermedSize = reduce(lambda x,y: x + y[2], intermeds, 0)
+        except:
+            pass # don't worry about problems here.
 
     def stop(self):
         self.finishTime = time.time()        
