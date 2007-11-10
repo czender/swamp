@@ -354,7 +354,7 @@ class NcoParser:
 
     @staticmethod
     def parse(original, argv, lineNumber=0, factory=None):
-        log.debug("building cmd from: %s" %original)
+        #log.debug("building cmd from: %s" %original)
         cmd = argv[0]
         (argList, leftover) = NcoParser.specialGetOpt(argv)
         argDict = dict(argList)
@@ -591,7 +591,7 @@ class Parser:
    
         #log.debug("factory cmd_By_log_in: " + str(factory.commandByLogicalIn))
         #log.debug("factory uselist " + str(factory.scrFileUseCount))
-        print "root context has,", self._context
+        #print "root context has,", self._context
         assert self._context == self._rootContext #should have popped back to top.
         self._context.evaluateAll(self)
         pass
@@ -719,7 +719,6 @@ class Parser:
                     return True
 
                 line = evalContext.variableParser.apply(self._line)
-                print "checking if:",line
                 parsed = self._parseExpr.parseString(line)
                 boolean = parsed["boolean"]
                 rhs = boolean["rhs"]
@@ -732,7 +731,6 @@ class Parser:
                             "<" :  lambda l,r: l < r,
                             ">" :  lambda l,r: l > r,
                             }
-                print "resolved", lhs, op, rhs, resolver[op](lhs,rhs)
                 self._ifResult = resolver[op](lhs,rhs)
                 return self._ifResult
                 # FIXME: Figure out what sort of errors are possible here.
@@ -761,8 +759,6 @@ class Parser:
                                               self.Expr.IfHeading)
             self._members = [self._currentBranch]
             
-
-            print "new branch"
             pass
 
         def __str__(self):
@@ -791,7 +787,7 @@ class Parser:
         def _state2Parse(self, lineTup):
             # In state 2, the last statement seen is 'else' so the only
             # valid keyword is 'fi'
-            print "state 2", lineTup
+            
             try:
                 return self._tryFi(lineTup)
             except ParseException, e:
@@ -823,7 +819,7 @@ class Parser:
             return parent
             if matchOnly:
                 return parent
-            print "supposed to dump to", parent, "lines now", self._savedLines
+            #print "supposed to dump to", parent, "lines now", self._savedLines
             for l in self._savedLines:
                 n = BaseContext.extParse(self, l)
                 if n:
