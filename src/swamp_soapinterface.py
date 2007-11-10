@@ -3,7 +3,7 @@
 # $URL$
 #
 # This file is released under the GNU General Public License version 3 (GPLv3)
-# Copyright (c) 2007 Daniel L. Wang
+# Copyright (c) 2007 Daniel L. Wang, Charles S. Zender
 
 # SWAMP imports
 from swamp_common import *
@@ -160,7 +160,7 @@ class StandardJobManager:
         thread.start()
         return 
 
-    def taskStateObject(self, task):
+    def _taskStateObject(self, task):
         token = -1 # use dummy token for now.
         if isinstance(task, int):
             return SwampTaskState.newState(token, "submitted")
@@ -195,7 +195,7 @@ class StandardJobManager:
                     return None
         if self.config.serviceMode != "master":
             log.error("pollState not implemented here yet")
-        stateObject = self.taskStateObject(self.jobs[token])
+        stateObject = self._taskStateObject(self.jobs[token])
         stateObject.token = token
         if not stateObject:
             log.error("SOAP interface found weird object in self.jobs:" +
@@ -204,11 +204,15 @@ class StandardJobManager:
         else:
             return stateObject.packed()
 
-    def pollStateMany(self, tokenList):
-        return map(self.pollState, tokenList)
+    def pollStats(self, token):
+        if token not in self.jobs:
+            time.sleep(0.2) # possible race
+            if token not in self.jobs:
+                log.warning("token not ready after waiting.") 
+        
+                
 
-
-    def actualToPub(self, f):
+    def _actualToPub(self, f):
         log.debug("++"+f +self.config.execResultPath)
         relative = f.split(self.config.execResultPath + os.sep, 1)
         if len(relative) < 2:
@@ -221,7 +225,7 @@ class StandardJobManager:
         assert token in self.jobs
         task = self.jobs[token]
         outs = task.scrAndLogOuts
-        outUrls = map(lambda f: (f[0], self.actualToPub( # make url from file
+        outUrls = map(lambda f: (f[0], self._actualToPub( # make url from file
             task.outMap.mapReadFile(f[1]))), # find output localfile
                        outs) #start from logical outs.
 
@@ -230,23 +234,10 @@ class StandardJobManager:
 
         return outUrls
 
-    def discardFile(self, f):
-        log.debug("Discarding "+str(f))
-        self.fileMapper.discardLogical(f)
-
-    def discardFiles(self, fList):
-        log.debug("Bulk discard "+str(fList))
-        #for f in fList:
-        for i in range(len(fList)):
-            self.fileMapper.discardLogical(fList[i])
-        #map(self.fileMapper.discardLogical, fList)
 
     def discardFlow(self, token):
-        log.debug("startdiscard 1")
         task = self.jobs[token]
-        log.debug("startdiscard 2")
         task.cleanPhysicals()
-        log.debug("startdiscard 3")
         self.discardedJobs[token] = self.jobs.pop(token)
         log.debug("discarding for token %d" %(token))
         pass

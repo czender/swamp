@@ -31,6 +31,7 @@ class ScriptStatistic:
         self.finishTime = None
         self.script = script
         self.task = task
+        self.hexhash = md5.md5(script).hexdigest()
         pass
 
     def outputFiles(self, filesizelist):
@@ -79,7 +80,7 @@ class ScriptStatistic:
         print "intermediate size", self.intermedSize
         print "overall tree width", self.dagWidth
         
-        
+    
     def lessThanEqual(self, rhs):
         return self.startTime < rhs.startTime
 
@@ -104,6 +105,22 @@ class ScriptStatistic:
         self._traversed.add(node)
         #print "width of cmd line", node.referenceLineNum," is", width
         return width
+
+    def _statsForClient(self):
+        commaize = lambda n: (str(n),
+                              (n>999) and commaize(n/1000)+ ",%03d" % (n%1000) )[n>999]
+
+        return "\n".join(["Execution Time: %f seconds" % self.runTime,
+                          "Output data: %s bytes" % commaize(self.outputSize),
+                          "Input data: %s bytes" % commaize(self.inputSize),
+                          "Intermediate size: %s bytes" % commaize(self.intermedSize),
+                          "Estimated flow width: %f", self.dagWidth])
+
+    def _writeScript(self):
+        pass
+        
+    
+    
 
 class Tracker:
     """A context for tracking statistics.  This is the top-level
@@ -134,6 +151,11 @@ class Tracker:
 
     def scriptStat(self, key):
         return self.script[key]
+
+    def _writeStat(self, scriptTuple):
+        (key, script, task) = scriptTuple
+
+        
         
     pass
 
