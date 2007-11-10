@@ -17,7 +17,6 @@ SwampCoreVersion = "$Id$"
 import cPickle as pickle
 import copy # for shallow object copies for pickling
 #import getopt
-from heapq import * # for minheap implementation
 import logging
 import md5
 import os
