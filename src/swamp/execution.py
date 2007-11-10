@@ -15,12 +15,18 @@ import time
 import threading
 from heapq import * # for minheap implementation
 
+# for working around python bug http://bugs.python.org/issue1628205
+import socket
+from errno import EINTR
+
 # third party imports
 from SOAPpy import SOAPProxy
 
 # swamp imports
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
+
+
 
 
 #local module helpers:
@@ -635,7 +641,18 @@ class RemoteExecutor:
         for (token, rToken) in self.running.items():
             lTokens.append(token)
             rTokens.append(rToken)
-        states = self.rpc.pollStateMany(rTokens)
+
+        while True:
+            try:
+                states = self.rpc.pollStateMany(rTokens)
+                break
+            except socket.error, err:
+                # workaround buggy python sockets: doesn't handle EINTR
+                # http://bugs.python.org/issue1628205
+                if err[0] == EINTR:
+                    continue
+                raise
+            
         for i in range(len(lTokens)):
             if states[i] is not None:
                 self._graduate(lTokens[i], states[i])
