@@ -33,6 +33,8 @@ def main():
             return
     if offeredConfs:
         confname = offeredConfs
+    else:
+        print "using %s for configuration (specify alternate via -c or --config)" % confname
 
     swamp.server.startServer(confname)
 

@@ -22,6 +22,11 @@ from swamp_common import *
 from swamp.config import Config     
 import swamp.inspector as inspector
 import swamp.soapi as soapi
+from swamp.mapper import FileMapper
+
+# FIXME: reorg code to not need these two:
+from swamp.execution import LocalExecutor
+from swamp.execution import NcoBinaryFinder
 
 
 class LaunchThread(threading.Thread):
@@ -127,7 +132,7 @@ class WorkerConnector(threading.Thread):
             # fail- do not try again
             # fail- try again later
             # timeout - try again later
-            log.debug("Bad registration, will retry " + ack)
+            log.debug("Bad registration, will retry " + str(ack))
             self._timeLastAttempt = time.time()
             return
         log.debug("Successfuly registered to " + self._target[0])
