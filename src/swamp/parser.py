@@ -559,11 +559,9 @@ class Parser:
         cline = self.stripComments(line)
         if self.continuation:
             cline = self.continuation + cline
-            print "continuation concat:", cline
             self.continuation = None
         if cline.endswith("\\"): # handle line continuation
             self.continuation = cline[:-1] # excise backslash
-            print "continuation detect:", cline
             return self._context
         if not cline:
             return self._context
