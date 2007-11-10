@@ -13,6 +13,7 @@
 
 
 # Standard Python imports
+import md5
 import operator
 import time
 

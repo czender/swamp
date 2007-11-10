@@ -11,10 +11,13 @@ command - contains code that understands how to build commands
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
 # Std. Python imports
+import copy
+import cPickle as pickle
 import fnmatch
 import glob
 import operator
 import os
+import re
 
 
 # (semi-)third-party imports
@@ -166,8 +169,6 @@ class CommandFactory:
         res = glob.glob(s)
         res.sort() # sort the wildcard expansion.
 
-        #logging.error("globbing %s from %s"%(inputFilename,os.curdir))
-        #logging.error("-- %s --%s"%(str(res),str(glob.glob("camsom1pdf/*"))))
         os.chdir(save)
         return res
 
