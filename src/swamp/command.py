@@ -46,11 +46,22 @@ class Command:
         self.children = []
         self.factory = None
         self.inputSrcs = []
+        self._schedNum = 2000000000 # magic big number
+        self._useSched = False
         pass
 
-    # sort on referencelinenum
-    def __cmp__(self, other):
+    def cmpRef(self, other):
         return cmp(self.referenceLineNum, other.referenceLineNum)
+
+    def cmpSched(self, other):
+        return cmp(self._schedNum, other._schedNum)
+
+    # replaceable by above functions.
+    def __cmp__(self, other):
+        if self._useSched:
+            return self.cmpSched(other)
+        else:
+            return self.cmpRef(other)
 
     def __hash__(self): # have to define hash, since __cmp__ is defined
         return id(self)
@@ -99,6 +110,11 @@ class Command:
         return filter(lambda x: x != '', cmdLine)
         #self.cmdLine = filter(lambda x: x != '', cmdLine)
         #return self.cmdLine
+
+    def schedNum(self, num):
+        self._schedNum = num
+        self._useSched = True
+        # we'd like to do self.__cmp__ = self.cmpSched , but it breaks.
 
     pass # end of Command class
         

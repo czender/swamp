@@ -56,7 +56,7 @@ class Scheduler:
         self.fileLocations = {}
         self._graduateHook = graduateHook
         self.result = None # result is True on success, or a string/other-non-boolean on failure.
-        
+        self.cmdCount = 0
         pass
 
     def makeTaskId(self):
@@ -110,7 +110,9 @@ class Scheduler:
             map(lambda f: insert(f, False), parserCommand.inputs)
             map(lambda f: insert(f, True), parserCommand.outputs)
             pass
+        parserCommand.schedNum(self.cmdCount)
         self.cmdList.append(parserCommand)
+        self.cmdCount += 1
         pass
 
     def finish(self):
