@@ -535,8 +535,12 @@ class LocalExecutor:
         log.debug("finish token %d with code %d" %(token,retcode))
         self.finished[token] = retcode
         self.running.pop(token)
-        
-        outputs = self.cmds[token].actualOutputs
+
+        cmd = self.cmds[token]
+        cmd.actualOutputs = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
+                                cmd.actualOutputs)
+        outputs = cmd.actualOutputs
+
         for x in outputs:
             self.actual[x[0]] = x[1]
 
@@ -681,7 +685,7 @@ class RemoteExecutor:
         log.debug("adding %s from %s" % (str(outputs), str(rToken)))
         for x in outputs:
             self._addFinishOutput(x[0],x[1])
-            cmd.actualOutputs.append((x[0],x[1]))
+            cmd.actualOutputs.append((x[0],x[1], x[2]))
 
     def _waitForFinish(self, token):
         """helper function"""
