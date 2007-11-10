@@ -117,7 +117,8 @@ class StandardJobManager:
         self.token += 1
         token = self.token + 0
         self.tokenLock.release()
-        log.info("Received new workflow (%d) {%s}" % (token, script))
+        #log.info("Received new workflow (%d) {%s}" % (token, script))
+        log.info("Received new workflow (%d) {%s}" % (token, ""))
         self._threadedLaunch(script, token)
         log.debug("return from thread launch (%d)" % (token))
         return token
