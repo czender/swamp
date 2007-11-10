@@ -16,7 +16,7 @@ import threading
 from heapq import * # for minheap implementation
 
 # third party imports
-import SOAPpy
+from SOAPpy import SOAPProxy
 
 # swamp imports
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
