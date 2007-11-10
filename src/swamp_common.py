@@ -39,6 +39,7 @@ from swamp.parser import Parser
 from swamp.command import CommandFactory
 from swamp import log
 from swamp.execution import ParallelDispatcher
+from swamp.execution import RemoteExecutor
 from swamp.mapper import LinkedMap
 import swamp.statistics as statistics
 

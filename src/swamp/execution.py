@@ -15,7 +15,10 @@ import time
 import threading
 from heapq import * # for minheap implementation
 
+# third party imports
+import SOAPpy
 
+# swamp imports
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
 
