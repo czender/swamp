@@ -13,9 +13,9 @@ command - contains code that understands how to build commands
 # Std. Python imports
 import copy
 import cPickle as pickle
-import fnmatch
-import glob
-import operator
+from fnmatch import filter as fnfilter
+from glob import glob as globglob
+from operator import add as opadd
 import os
 import re
 
@@ -61,7 +61,7 @@ class Command:
         if self._useSched:
             return self.cmpSched(other)
         else:
-            return self.cmpRef(other)
+            return -self.cmpRef(other) # try neg?, deepest-first sort.
 
     def __hash__(self): # have to define hash, since __cmp__ is defined
         return id(self)
@@ -147,7 +147,7 @@ class CommandFactory:
         pass
 
     def mapInput(self, scriptFilename):
-        temps = fnmatch.filter(self.scriptOuts, scriptFilename)
+        temps = fnfilter(self.scriptOuts, scriptFilename)
         # FIXME: should really match against filemap, since
         # logicals may be renamed
         if temps:
@@ -182,7 +182,7 @@ class CommandFactory:
         os.chdir(self.config.execSourcePath)
         # no absolute paths in input filename!
         s = inputFilename.lstrip("/")
-        res = glob.glob(s)
+        res = globglob(s)
         res.sort() # sort the wildcard expansion.
 
         os.chdir(save)
@@ -225,7 +225,7 @@ class CommandFactory:
                    inouts, referenceLineNum):
         # first, reassign inputs and outputs.
         scriptouts = inouts[1]
-        newinputs = reduce(operator.add, map(self.mapInput, inouts[0]))
+        newinputs = reduce(opadd, map(self.mapInput, inouts[0]))
         newoutputs = map(self.mapOutput, inouts[1])
         inouts = (newinputs, newoutputs)
 

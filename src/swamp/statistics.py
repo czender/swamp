@@ -30,6 +30,7 @@ class ScriptStatistic:
     def __init__(self, script, task):
         self.startTime = time.time()
         self.finishTime = None
+        self.parseFinishTime = 0
         self.script = script
         self.task = task
         self.hexhash = md5.md5(script).hexdigest()
@@ -64,9 +65,14 @@ class ScriptStatistic:
         except:
             pass # don't worry about problems here.
 
+    def markParseFinish(self):
+        self.parseFinishTime = time.time()
+        
     def stop(self):
         self.finishTime = time.time()        
         self.runTime = self.finishTime - self.startTime
+        self.parseTime = self.parseFinishTime - self.startTime
+        self.computeTime = self.finishTime - self.parseFinishTime
         pass
     
     def finish(self):
@@ -76,10 +82,13 @@ class ScriptStatistic:
         if not self.finishTime:
             self.stop()
         print "flush script", self.runTime, "seconds"
+        print "compute time", self.computeTime, "seconds"
+        print "parse time", self.parseTime, "seconds"
         print "output size", self.outputSize
         print "input size", self.inputSize
         print "intermediate size", self.intermedSize
         print "overall tree width", self.dagWidth
+        print "local slots", self.task.config.execLocalSlots
         
     
     def lessThanEqual(self, rhs):
