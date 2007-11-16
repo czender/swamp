@@ -269,7 +269,7 @@ class ParallelDispatcher:
         return None
 
     def dispatchAll(self, cmdList, hook=lambda f:None):
-        log.debug("dispatching cmdlist="+str(cmdList))
+        #log.debug("dispatching cmdlist="+str(cmdList))
         self.running = {} # token -> cmd
         self.execPollRR = itertools.cycle(self.executors)
         self.execDispatchRR = itertools.cycle(self.executors)
@@ -372,7 +372,7 @@ class LocalExecutor:
                                       self.filemap.mapWriteFile)
         log.debug("%d-exec-> %s" % (token," ".join(cmdLine)))
         # make sure there's room to write the output
-        log.debug("clearing to make room for writing (should be using concretefiles")
+        #log.debug("clearing to make room for writing (should be using concretefiles")
         self.clearFiles(map(lambda t: t[1], cmd.actualOutputs))
         pid = self.resistErrno513(os.P_NOWAIT,
                                   self.binaryFinder(cmd), cmdLine)
@@ -691,6 +691,11 @@ class RemoteExecutor:
     def _addFinishOutput(self, logical, actual):
         self.actual[logical] = actual
 
+    def _retryPollOutputs(self, token):
+        try:
+            outputs = self.rpc.pollOutputs(rToken)
+        except:
+            pass
     def _graduate(self, token, retcode):
         rToken = self.running.pop(token)
         cmd = self.cmds.pop(token)

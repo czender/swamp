@@ -28,6 +28,7 @@ import time
 import threading
 import urllib
 
+import  profile
 
 
 # SWAMP imports
@@ -199,10 +200,18 @@ class SwampTask:
         self.outMap = LinkedMap(outMap, self.taskId())
         self._publishedFiles = []
         self.stat = statistics.tracker().scriptStart((self.taskId(), script, self))
-        try:
+        if True: # set to False to profile the parse step
             self._parseScript(script)
+            self.stat.markParseFinish()
+            return
+        try:
+            pobject = profile.Profile()
+            presult = pobject.runctx('self._parseScript(script)', globals(),locals())
+            presult.dump_stats("/home/wangd/parse.pyprofile")
         except StandardError, e:
             self.fail = str((e,e.__doc__, str(e)))
+            raise e
+        self.stat.markParseFinish()
         pass
 
     def _parseScript(self, script):
