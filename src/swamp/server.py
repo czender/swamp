@@ -345,8 +345,9 @@ class JobManager:
     def pollOutputs(self, token):
         assert token in self.jobs
         outs = self.localExec.actualOuts(self.jobs[token])
+        #log.debug("actual is " + str(outs) + " for " + str(token))
         outs += self.localExec.fetchedSrcs(self.jobs[token])
-        log.debug("outs is " + str(outs) + " for " + str(token))
+        #log.debug("outs is " + str(outs) + " for " + str(token))
         l = map(lambda t: (t[0], self.actualToPub(t[1]), t[2]), outs)
         log.debug("also outs is " + str(l))
         return l

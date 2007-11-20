@@ -545,6 +545,8 @@ class LocalExecutor:
         cmd = self.cmds[token]
         cmd.actualOutputs = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
                                 cmd.actualOutputs)
+        self.rFetchedFiles[token] = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
+                                self.rFetchedFiles[token])
         outputs = cmd.actualOutputs
 
         for x in outputs:
@@ -692,15 +694,20 @@ class RemoteExecutor:
         self.actual[logical] = actual
 
     def _retryPollOutputs(self, token):
-        try:
-            outputs = self.rpc.pollOutputs(rToken)
-        except:
-            pass
+        while True:
+            try:
+                outputs = self.rpc.pollOutputs(token)
+                break
+            except Exception, e:
+                log.error("Error in execution.py:self.rpc.pollOutputs-- error in SOAPpy/Client.py (retry in 2 seconds)")
+                time.sleep(2)
+                pass
     def _graduate(self, token, retcode):
         rToken = self.running.pop(token)
         cmd = self.cmds.pop(token)
         self.finished[token] = retcode
         #outputs = self.rpc.actualOuts(rToken)
+        self._retryPollOutputs(rToken)
         outputs = self.rpc.pollOutputs(rToken)
         # where do i keep my commands?
         cmd.actualOutputs = []
