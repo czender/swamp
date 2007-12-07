@@ -89,7 +89,9 @@ class ScriptStatistic:
         print "intermediate size", self.intermedSize
         print "overall tree width", self.dagWidth
         print "local slots", self.task.config.execLocalSlots
-        
+
+    def statList(self):
+        return self._statListForClient()
     
     def lessThanEqual(self, rhs):
         return self.startTime < rhs.startTime
@@ -116,15 +118,16 @@ class ScriptStatistic:
         #print "width of cmd line", node.referenceLineNum," is", width
         return width
 
-    def _statsForClient(self):
+    def _statListForClient(self):
         commaize = lambda n: (str(n),
                               (n>999) and commaize(n/1000)+ ",%03d" % (n%1000) )[n>999]
 
-        return "\n".join(["Execution Time: %f seconds" % self.runTime,
-                          "Output data: %s bytes" % commaize(self.outputSize),
-                          "Input data: %s bytes" % commaize(self.inputSize),
-                          "Intermediate size: %s bytes" % commaize(self.intermedSize),
-                          "Estimated flow width: %f", self.dagWidth])
+        return [("Execution Time", "%f seconds" % self.runTime),
+                ("Input size",     "%s bytes" % commaize(self.inputSize)),
+                ("Intermediate size", "%s bytes" % commaize(self.intermedSize)),
+                ("Output size",    "%s bytes" % commaize(self.outputSize)),
+                ("Estimated flow width", "%f" % self.dagWidth)
+                ]
 
     def _writeScript(self):
         pass

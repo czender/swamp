@@ -213,6 +213,13 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
             if "commandCount" in extra and "executedCount" in extra:
                 return "Executed %d/%d" %(extra["executedCount"],
                                           extra["commandCount"])
+            else:
+                items = extra.items()
+                items.sort()
+                return os.linesep.join(["%s : %s" % tuple(map(str,i))
+                                        for i in items])
+        elif isinstance(extra, list):
+            return os.linesep.join([" : ".join(e) for e in extra])
         return str(extra)
     
     def _waitForScriptFinish(self, token):
@@ -224,12 +231,15 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
             ret = server.pollState(token)
             state = SwampTaskState.newFromPacked(ret)
             if state.stable():
-                print "Task finished, code ", state.name()
+                print "Task finished (%d - %s) " %( state.state,
+                                                    state.name())
+                if state.extra:
+                    print "Details:", self._stringifyExtra(state.extra)
                 break
             else:
                 if state.name() != lastreport:
                     lastreport = state.name()
-                    print "Task is in the (%d) %s state" %(state.state,
+                    print "Task is in the (%d - %s) state" %(state.state,
                                                            lastreport) 
                     if state.extra:
                         lastextra = self._stringifyExtra(state.extra) 

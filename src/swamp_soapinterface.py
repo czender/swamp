@@ -168,7 +168,9 @@ class StandardJobManager:
         if isinstance(task, SwampTask):
             r = task.result()
             if r == True:
-                return SwampTaskState.newState(token, "finished")
+                s = statistics.tracker().scriptStat(task.taskId())
+                extra = s.statList()
+                return SwampTaskState.newState(token, "finished", extra)
             elif r != None:
                 return SwampTaskState.newState(token, "generic error",r)
             else:
