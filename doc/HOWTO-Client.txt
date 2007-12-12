@@ -40,9 +40,18 @@ Notes:
   models from the IPCC 4th Assessment Report.
   See: http://pbs.calit2.uci.edu:8080/inspect?action=catalog#_pcmdi
 
+* Try our other test script, ipcctest.swamp that computes an ensemble mean 
+  of 17 IPCC climate models in a monthly mean time series.
+
+* Please tell us what you think. The SWAMP user forum is at: 
+  http://groups.google.com/group/swamp-users 
+  Planned outages of the test service will be announced there.  
+
 
 Congratulations!  You're well on your way to executing your own workflows 
 on super-parallel hardware without fussing around the details.
 
 -Daniel L. Wang
 wangd@uci.edu
+
+
