@@ -113,7 +113,7 @@ class Interface:
         donejobs = self.config.runtimeJobManager.discardedJobs
         def info(task):
             if task:
-                state = self.config.runtimeJobManager.taskStateObject(task)
+                state = self.config.runtimeJobManager._taskStateObject(task)
                 if not state:
                     return ""
                 try:
