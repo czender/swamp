@@ -34,7 +34,7 @@ clean:
 	rm src/*{~,pyc} src/swamp/*{pyc,~}
 
 CLIENTFILES = src/swamp_client.py src/swamp_transact.py demo/mtosca.swamp \
- doc/uci/* doc/HOWTO-Client.txt 
+ demo/ipcctest.swamp doc/uci/* doc/HOWTO-Client.txt 
 
 
 
