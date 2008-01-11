@@ -33,7 +33,6 @@ import  profile
 
 # SWAMP imports
 #
-from swamp_dbutil import JobPersistence
 from swamp.config import Config
 from swamp.parser import Parser
 from swamp.command import CommandFactory

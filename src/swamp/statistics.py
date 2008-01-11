@@ -65,6 +65,15 @@ class ScriptStatistic:
         except:
             pass # don't worry about problems here.
 
+    def dotFormat(self, clist):
+        """return list of strings that, concatenated, yield a graph
+        specification suitable for processing by the dot graph renderer.
+        This lets us make pretty workflow graphs via graphviz."""
+        # implement me!
+        
+        pass
+    
+
     def markParseFinish(self):
         self.parseFinishTime = time.time()
         
