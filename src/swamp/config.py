@@ -3,7 +3,7 @@
 """
 config - Contains core logic for handling SWAMP configuration.
 """
-# Copyright (c) 2007 Daniel Wang
+# Copyright (c) 2007 Daniel L. Wang, Charles S. Zender
 # This file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
@@ -92,7 +92,7 @@ class Config:
                 if val in Config.REMAP:
                     val = Config.REMAP[val]
                 elif not isinstance(val, type(m[3])):
-                    val = type(m[3])(val.split[0]) # coerce type to match default
+                    val = type(m[3])(val.split()[0]) # coerce type to match default
             setattr(self, m[0], val)
             log.debug( "set config %s to %s"%(m[0], str(val)))
             pass
