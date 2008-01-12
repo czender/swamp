@@ -55,7 +55,7 @@ $(SOURCETARPATH):	# everything under svn
 
 SERVICEFILES_ = doc/HOWTO-Service.txt demo/sample-swamp.conf src/{swamp_soapinterface.py,swamp_transact.py,workerServer.py,swamp_common.py}
 
-$(SERVICETARPATH):	# everything the server needs
+$(SERVICETARPATH):	$(SERVICEFILES) src/swamp/* # everything the server needs
 	mkdir -p $(SERVICE_DISTDIR)
 	cp -r $(SERVICEFILES_) $(SERVICE_DISTDIR)
 	svn export http://swamp.googlecode.com/svn/trunk/src/swamp $(SERVICE_DISTDIR)/swamp
