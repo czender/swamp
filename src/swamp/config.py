@@ -92,7 +92,7 @@ class Config:
                 if val in Config.REMAP:
                     val = Config.REMAP[val]
                 elif not isinstance(val, type(m[3])):
-                    val = type(m[3])(val) # coerce type to match default
+                    val = type(m[3])(val.split[0]) # coerce type to match default
             setattr(self, m[0], val)
             log.debug( "set config %s to %s"%(m[0], str(val)))
             pass
