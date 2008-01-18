@@ -14,6 +14,7 @@ import os
 import time
 import threading
 from heapq import * # for minheap implementation
+import inspect # for debugging
 
 # for working around python bug http://bugs.python.org/issue1628205
 import socket
@@ -379,6 +380,7 @@ class LocalExecutor:
         log.debug("child pid: "+str(pid))
 
         self.running[token] = pid
+        log.debug("LocalExec added token %d" %token)
         self.cmds[token] = cmd
         return token
 
@@ -398,9 +400,11 @@ class LocalExecutor:
             pid = self.running[token]
             try:
                 (pid2, status) = os.waitpid(pid,os.WNOHANG)
-                if (pid2 != 0) and os.WIFEXITED(status):
+                
+                if (pid2 != 0):
                     code = os.WEXITSTATUS(status)
                     self._graduate(token, code)
+                    #log.debug("LocalExec returning %d -> %d"%(pid,code))
                     return code
                 else:
                     return None
@@ -438,7 +442,7 @@ class LocalExecutor:
 
     def join(self, token):
         if token in self.running:
-            pid = self.running.pop(token)
+            pid = self.running[token]
             (pid, status) = os.waitpid(pid,0)
             
             log.debug("got "+str(pid)+" " +str(status)+"after spawning")
@@ -446,7 +450,8 @@ class LocalExecutor:
                 status = os.WEXITSTATUS(status)
             else:
                 status = -1
-            self.finished[token] = status
+            self._graduate(token, status)
+            #self.finished[token] = status
             return status
         else:
             raise StandardError("Tried to join non-running job")
@@ -538,19 +543,20 @@ class LocalExecutor:
 
     def _graduate(self, token, retcode):
         ## fix this! pulled from remoteexecutor (1/2 finish)
-        log.debug("finish token %d with code %d" %(token,retcode))
+        #print inspect.stack()
+
         self.finished[token] = retcode
         self.running.pop(token)
 
         cmd = self.cmds[token]
-        cmd.actualOutputs = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
-                                cmd.actualOutputs)
+        if retcode == 0:
+            cmd.actualOutputs = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
+                                    cmd.actualOutputs)
+            outputs = cmd.actualOutputs
+            for x in outputs:
+                self.actual[x[0]] = x[1]
         self.rFetchedFiles[token] = map(lambda x: (x[0], x[1], os.stat(x[1]).st_size),
                                 self.rFetchedFiles[token])
-        outputs = cmd.actualOutputs
-
-        for x in outputs:
-            self.actual[x[0]] = x[1]
 
 
     def resistErrno513(self, option, binPath, arglist):

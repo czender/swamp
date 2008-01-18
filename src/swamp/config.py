@@ -40,8 +40,9 @@ class Config:
 
               ("serviceHostname", "service", "hostname", "localhost"),
               ("servicePort", "service", "port", 8081),
-              ("serviceSoapPath", "service", "soapPath", "SOAP"),
-              ("servicePubPath", "service", "pubPath", "pub"),
+              ("serviceSoapPath", "service", "path", "SOAP"),
+              ("serviceXmlPath", "service", "xmlPath", ""),
+              ("servicePubPath", "service", "filePath", "pub"),
               ("serviceMode", "service", "mode", "master"),
               ("serviceLevel", "service", "level", "production"),
               
