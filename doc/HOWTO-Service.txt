@@ -1,4 +1,85 @@
-This file will contain instructions on how to install SWAMP.
+Here are some brief instructions on how to get running with SWAMP.
+The text of this is pulled periodically from the wiki page
+SwampServiceQuickstart, available at:
+http://code.google.com/p/swamp/wiki/SwampServiceQuickstart
+
+----
+= Introduction =
+
+SWAMP is a simple system, with simple requirements, but may not be
+obvious to install, especially since no installation wizard has been
+developed.  Here is a brief look at how to install. 
+
+== Quick Benefits and Consequences ==
+Offering a SWAMP service has a important benefits to those publishing
+their data: 
+ * Drastically reduced bandwidth demand from the server.
+ * Simple, familiar analysis through scripts of NCO.  No new language
+ learning needed! 
+ * Efficient analysis execution. SWAMP parallelizes your script so you
+ get your results faster... automatically. 
+
+However, there are a few issues that you may be aware of, as the
+server administrator: 
+ * Increased CPU load at the server.  Since SWAMP relocates analysis
+ away from the user and towards the server, where the data resides,
+ some amount of CPU load increase should be expected.   
+ * SWAMP does not authentication for use.  Until such a feature is
+ added, you may wish to keep your SWAMP instance behind a firewall.
+ The worst danger is that a demanding script may take a long time to
+ execute, and cause the request queue to be lengthy.  SWAMP is
+ conservatively designed to never overload the server.  If your data
+ is sensitive, a firewall is a must.   
+ * Disks hosting your data may be used more intensively.  Except for
+ odd cases, this means your data is getting more usage, which is
+ positive.  SWAMP enhances access to your data, and like other forms
+ of access, can increase load. 
+
+
+= Before getting started =
+Make sure your system meets the requirements:
+  * Unix-like operating system with installed software: 
+    * [http://python.org Python] 2.4 or higher
+    * Twisted Web (0.5 or higher) [http://twistedmatrix.com/ Twisted
+    Matrix Labs] 
+    * [http://sourceforge.net/project/showfiles.php?group_id=26590&package_id=18246 SOAPpy], from the [http://pywebsvcs.sourceforge.net/ Python Web Services Project], and its dependency, [http://pypi.python.org/pypi/fpconst/0.7.2 fpconst] 
+    * [http://pyparsing.wikispaces.com pyparsing]
+    * [http://nco.sourceforge.net netCDF Operators ]
+
+Most modern Linux distributions should have all of these in their
+repositories, and all are otherwise installable from installers or
+source packages^1^.  It _may_ be possible to make things work on a
+Windows platform.  Let us know if you'd like to try. 
+  
+= Step 1: Download SWAMP service =
+Although you can install using SVN, it's probably simpler to just get
+the swamp-service package and use it.   
+(coming soon)
+
+Once you've downloaded it, go ahead and unpack it into your directory
+of choice. 
+
+= Step 2: Configure SWAMP (edit swamp.conf) =
+Copy the included sample-swamp.conf over to swamp.conf and edit it
+appropriately.  The file is annotated with brief descriptions of each
+option, but please ask if any help is needed. 
+
+= Step 3: Start SWAMP =
+You may now start SWAMP with the commandline: {{{python
+swamp_soapinterface.py}}}  If your python installation is elsewhere,
+replace {{{python}}} with whatever is appropriate, e.g. {{{python24}}}
+on Rocks 4.2 . 
+
+Please direct questions to the SWAMP
+[http://groups.google.com/group/swamp-users user forum]:
+[mailto:swamp-users@googlegroups.com swamp-users@googlegroups.com]. 
+
+== Notes ==
+^1^ Fedora, Debian, and Ubuntu have all of them in their package
+repositories (though Debian and older Ubuntu dists use old versions of
+NCO).  RHEL/CentOS coverage may be spotty-- please post to the forums
+if you would like to try our homebuilt RPMs for these platforms.
+
 
 
 
