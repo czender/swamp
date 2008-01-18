@@ -15,6 +15,7 @@ import logging
 
 # twisted imports
 import twisted.web.soap as tSoap
+import twisted.web.xmlrpc as tXmlrpc
 import twisted.web.resource as tResource
 import twisted.web.server as tServer
 import twisted.web.static as tStatic
@@ -29,23 +30,29 @@ class Instance:
         self.soapHost = hostPortPath[0]
         self.soapPort = hostPortPath[1]
         self.soapPath = hostPortPath[2]
+        if (len(hostPortPath) > 3) and (len(hostPortPath[3]) > 0):
+                self.xmlPath = hostPortPath[3]
+        else:
+            self.xmlPath = None
 
         self.staticPaths = staticPaths
         self.funcExports = funcExports
         self.customChildren = customChildren
-        self.url = "http://%s:%d/%s" % hostPortPath
+        self.url = "http://%s:%d/%s" % hostPortPath[:3]
 
-    def _makeTwistedWrapper(self, exp):
-        """_makeTwistedWrapper
-        -- makes an object that exports a list of functions
-        exp -- a list of functions (i.e. [self.doSomething, self.reset])
+    def _makeWrapper(self, exp, prefix, wrapperClass):
+        """_makeWrapper: makes an object that exports a list of functions
+        exp:   a list of functions (e.g. [self.doSomething, self.reset])
+        prefix:       name prefix
+        wrapperClass: parent of new class
         """
-        class WrapperTemplate(tSoap.SOAPPublisher):
+        class Wrapper(wrapperClass):
             pass
-        w = WrapperTemplate()
+        w = Wrapper()
         # construct an object to export through twisted.
-        map(lambda x: setattr(w,"soap_"+x.__name__, x), exp)
+        map(lambda x: setattr(w, "_".join([prefix,x.__name__]), x), exp)
         return w
+        
         
     def listenTwisted(self, extInit=lambda : None):
         from twisted.internet import reactor
@@ -57,9 +64,15 @@ class Instance:
             self.staticPaths)
 
         # setup exportable interface
-        wrapper = self._makeTwistedWrapper(self.funcExports)
-        root.putChild(self.soapPath, wrapper)
-
+        print "publish",self.soapPath
+        root.putChild(self.soapPath, self._makeWrapper(self.funcExports,
+                                                      "soap",
+                                                      tSoap.SOAPPublisher))
+        if self.xmlPath:
+            print "publish",self.xmlPath
+            root.putChild(self.xmlPath, self._makeWrapper(self.funcExports,
+                                                          "xmlrpc",
+                                                          tXmlrpc.XMLRPC))
         
         map(lambda x: root.putChild(x[0],x[1]), self.customChildren)
 

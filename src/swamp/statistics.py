@@ -45,7 +45,7 @@ class ScriptStatistic:
         """record measurements on input files"""
         self.inputs = filesizelist
         self.inputSize = reduce(lambda x,y: x + y[1], filesizelist, 0)
-        
+
     def commandList(self, clist):
         def printC(cmd):
             print "cmd has inputs", cmd.inputs, "and outputs",cmd.actualOutputs
@@ -138,10 +138,106 @@ class ScriptStatistic:
                 ("Estimated flow width", "%f" % self.dagWidth)
                 ]
 
+    def _dagGraph(self, cmdList):
+        
+        pass
+    def _partition(self, cmdList):
+        b = Bipartitioner()
+        return b.result()
     def _writeScript(self):
         pass
         
+class Bipartitioner:
+    """Splits an approximately-min-cut partition of a flow graph."""
+    def __init__(self, cmdList):
+        self.original = cmdList
+        
+        total = len(cmdList)
+        halftotal = total/2
+        # arbitrarily split from ordered sequence
+        self.sets = [set(cmdList[:halftotal]), set(cmdList[halftotal:])]
+        
+        locked = set() # locked nodes
+        # while cutsize is reduced
+        # while valid moves exist
+        # use bucket data to find unlocked node in each partition that most improves cutsize
+        (ba, bb) = self._makeBuckets(setA, setB)
+        maxa = max(ba)
+        maxa = (maxa, ba[maxa])
+        maxb = max(bb)
+        maxb = (maxb, bb[maxb])
+        if maxa[0] > maxb[0]:
+            # move from a to b
+            chain = maxa[1]
+            e = chain.pop()
+            setA.remove(e)
+            setB.add(e)
+            #find new gain:
+            g = self._findGain(e, setB, setA)
+            
+            
+        else:
+            # move from b to a
+            pass
+
+        
+        # make the move
+
+        # lock moved node
+        # update nets
+        
+        pass
+    def _updateGain(self, c, bucket, current, remote):
+        # remove from current chain
+        gain = self._findGain(c, current, remote)
+        # add to new chain.
+        pass
+
+        
+    def _makeBuckets(self, cmdsa, cmdsb):
+        self.buckets = [{},{}]
+        # add a field to each command to eliminate need for extra table
+        def fieldAdder(buckets, sets):
+            def add(c):
+                c.biPartBuckets = buckets
+                c.biPartSets = sets
+            return add
+        map(fieldAdder(self.buckets, self.sets), self.setA)
+        (rb, rs) = (self.buckets[:], self.sets[:])
+        rb.reverse()
+        rs.reverse()
+        map(fieldAdder(rb,rs), self.setB)
+
+        def addToBucket(bucket, cmd, a, b):
+            gain = self._findGain(cmd)
+            bucket[gain] = bucket.get(gain,[]).append(cmd)
+        bucketa = {}
+        map(lambda c: addToBucket(bucketa, c, cmdsa, cmdsb), cmdsa)
+        bucketb = {}
+        map(lambda c: addToBucket(bucketb, c, cmdsb, cmdsa), cmdsb)
+        return (bucketa, bucketb)
+
+
+    def _findGain(self, cmd, source, dest):
+        # gain(move) = number of cross-partition nets before - after
+        # gain approximates the benefit from moving a command.
+        # so, gain = -delta(cost) = -(cost_after - cost_before)
+        # = cost_before - cost_after
+        
+        # before: num of neighbors in other part
+        # after: num of neighbors in current part
+        # assume cost=1, but can estimate later
+        source = cmd.biPartBuckets[0]
+        beforecount = len(filter(lambda x: x in dest,
+                                 cmd.parents + cmd.children))
+        aftercount = len(cmd.parents)+len(cmd.children) - beforecount
+        return beforecount - aftercount
+
+        
+        pass
     
+    def result(self):
+        return None #FIXME
     
 
 class Tracker:

@@ -382,7 +382,8 @@ class JobManager:
         custom = [("inspect", inspector.newResource(self.config))]
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,
-                            self.config.serviceSoapPath), 
+                            self.config.serviceSoapPath,
+                            self.config.serviceXmlPath), 
                            self.publishedPaths,
                            self.publishedFuncs,
                            custom)
