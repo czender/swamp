@@ -31,7 +31,9 @@ from swamp import log
 
 # Command and CommandFactory do not have dependencies on NCO things.
 class Command:
-    """this is needed because we want to build a dependency tree."""
+    """this is needed because we want to build a dependency tree.
+    Notice: self.factory causes pickling problems: should delete before
+    pickling"""
 
     def __init__(self, cmd, argtriple, inouts, parents, referenceLineNum):
         self.cmd = cmd

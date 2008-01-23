@@ -223,8 +223,13 @@ class SwampTask:
             self.scrAndLogOuts = self._commandFactory.realOuts()
             self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
             log.debug("outs are " + str(self.scrAndLogOuts))
+            self.fail = "Testing: Real operation disabled"
+            #print self.stat._dagGraph(self.scheduler.cmdList)
         except StandardError, e:
             self.fail = str(e)
+            
+        self.stat._dbgPickleCmds(self.scheduler.cmdList,'last.pypickle')
+        self.stat._partition(self.scheduler.cmdList)
         pass
 
     def _publishIfOutput(self, obj):
