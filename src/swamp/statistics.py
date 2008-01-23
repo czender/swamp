@@ -141,6 +141,9 @@ class ScriptStatistic:
     def _dagGraph(self, cmdList):
         
         pass
+    def _emitEdge(self, cmd):
+        
+        pass
     def _partition(self, cmdList):
         b = Bipartitioner()
         return b.result()
