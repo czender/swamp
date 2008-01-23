@@ -139,10 +139,19 @@ class ScriptStatistic:
                 ]
 
     def _dagGraph(self, cmdList):
-        
-        pass
-    def _emitEdge(self, cmd):
-        
+        otuples = []
+        for c in cmdList:
+            i = c.inputs
+            o = c.outputs
+            ituples = []
+            for f in i:
+                ituples.append([f,id(c)])
+            if not i:
+                ituples.append([id(c)])
+            for f in o:
+                for f2 in ituples:
+                    otuples.append(f2+[f])
+        return "\n".join(map(lambda t: " -> ".join(map(lambda s: '"%s"'%str(s),t)), otuples))
         pass
     def _partition(self, cmdList):
         b = Bipartitioner()
