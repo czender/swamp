@@ -139,6 +139,10 @@ class ScriptStatistic:
                 ]
 
     def _dagGraph(self, cmdList):
+        return ScriptStatistic.statDagGraph(cmdList)
+
+    @staticmethod
+    def statDagGraph(cmdList):
         otuples = []
         for c in cmdList:
             i = c.inputs
@@ -154,7 +158,7 @@ class ScriptStatistic:
         return "\n".join(map(lambda t: " -> ".join(map(lambda s: '"%s"'%str(s),t)), otuples))
         pass
     def _partition(self, cmdList):
-        b = Bipartitioner()
+        b = Bipartitioner(cmdList)
         return b.result()
     def _writeScript(self):
         pass
@@ -173,11 +177,17 @@ class Bipartitioner:
         # while cutsize is reduced
         # while valid moves exist
         # use bucket data to find unlocked node in each partition that most improves cutsize
-        (ba, bb) = self._makeBuckets(setA, setB)
+        (ba, bb) = self._makeBuckets(self.sets)
+        print "Buckets One", ba
+        print "Bucket Two", bb
         maxa = max(ba)
         maxa = (maxa, ba[maxa])
         maxb = max(bb)
         maxb = (maxb, bb[maxb])
+        print "maxa",maxa,id(maxa[1][0])
+        print "maxb",maxb,id(maxb[1][0])
+        self._writeSetState("stage0")
+        return
         if maxa[0] > maxb[0]:
             # move from a to b
             chain = maxa[1]
@@ -199,6 +209,8 @@ class Bipartitioner:
         # update nets
         
         pass
+
+    
     def _updateGain(self, c, bucket, current, remote):
         # remove from current chain
         gain = self._findGain(c, current, remote)
@@ -206,28 +218,28 @@ class Bipartitioner:
         pass
 
         
-    def _makeBuckets(self, cmdsa, cmdsb):
-        self.buckets = [{},{}]
+    def _makeBuckets(self, sets):
+        buck = [{},{}]
         # add a field to each command to eliminate need for extra table
         def fieldAdder(buckets, sets):
             def add(c):
                 c.biPartBuckets = buckets
                 c.biPartSets = sets
             return add
-        map(fieldAdder(self.buckets, self.sets), self.setA)
-        (rb, rs) = (self.buckets[:], self.sets[:])
+        map(fieldAdder(buck, sets), sets[0])
+        (rb, rs) = (buck[:], sets[:])
         rb.reverse()
         rs.reverse()
-        map(fieldAdder(rb,rs), self.setB)
+        map(fieldAdder(rb,rs), sets[1])
 
         def addToBucket(bucket, cmd, a, b):
-            gain = self._findGain(cmd)
-            bucket[gain] = bucket.get(gain,[]).append(cmd)
-        bucketa = {}
-        map(lambda c: addToBucket(bucketa, c, cmdsa, cmdsb), cmdsa)
-        bucketb = {}
-        map(lambda c: addToBucket(bucketb, c, cmdsb, cmdsa), cmdsb)
-        return (bucketa, bucketb)
+            gain = self._findGain(cmd, a,b)
+            #print "looking for gain",gain, bucket[gain]
+            bucket[gain] = bucket.get(gain,[]) + [cmd]
+            #print "newgain",gain, bucket[gain]
+        map(lambda c: addToBucket(buck[0], c, sets[0], sets[1]), sets[0])
+        map(lambda c: addToBucket(buck[1], c, sets[1], sets[0]), sets[1])
+        return buck
 
 
     def _findGain(self, cmd, source, dest):
@@ -246,6 +258,19 @@ class Bipartitioner:
         return beforecount - aftercount
 
         
+        pass
+
+    def _writeSetState(self,label):
+        stage0 = [
+            "digraph stage0 {",
+            "subgraph clustera { ",
+            str(ScriptStatistic.statDagGraph(self.sets[0])),
+            "}",
+            "subgraph clusterb { ",
+            str(ScriptStatistic.statDagGraph(self.sets[1])),
+            "}",
+            "}"]
+        open("%s.dot" %label,"w").write("\n".join(stage0))
         pass
     
     def result(self):
