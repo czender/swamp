@@ -160,6 +160,14 @@ class ScriptStatistic:
     def _partition(self, cmdList):
         b = Bipartitioner(cmdList)
         return b.result()
+    def _dbgPickleCmds(self, cmdList, filename):
+        import cPickle as pickle
+        import copy
+        safecopy = copy.copy(cmdList)
+        map(lambda x: delattr(x, 'factory'), safecopy)
+        pickle.dump(cmdList, open(filename,"w"))        
+        return
+
     def _writeScript(self):
         pass
         
@@ -323,3 +331,22 @@ def initTracker(config):
 def tracker():
     assert _tracker is not None # consider opening up tracker.
     return _tracker
+
+class Test:
+    def __init__(self):
+        pass
+    def test1(self):
+        import cPickle as pickle
+        cmds = pickle.load(open('lastcmds.pypickle'))
+        b = Bipartitioner(cmds)
+        print b.result()
+        
+                           
+        
+    
+def main():
+    t = Test()
+    t.test1()
+
+if __name__ == '__main__':
+    main()
