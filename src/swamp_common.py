@@ -214,14 +214,17 @@ class SwampTask:
         pass
 
     def _parseScript(self, script):
-        log.debug("Starting parse")
-        self.parser.parseScript(script, self._commandFactory)
-        log.debug("Finish parse")
-        self.scheduler.finish()
-        log.debug("finish scheduler prep")
-        self.scrAndLogOuts = self._commandFactory.realOuts()
-        self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
-        log.debug("outs are " + str(self.scrAndLogOuts))
+        try:
+            log.debug("Starting parse")
+            self.parser.parseScript(script, self._commandFactory)
+            log.debug("Finish parse")
+            self.scheduler.finish()
+            log.debug("finish scheduler prep")
+            self.scrAndLogOuts = self._commandFactory.realOuts()
+            self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
+            log.debug("outs are " + str(self.scrAndLogOuts))
+        except StandardError, e:
+            self.fail = str(e)
         pass
 
     def _publishIfOutput(self, obj):
