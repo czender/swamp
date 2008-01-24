@@ -337,7 +337,7 @@ class Test:
         pass
     def test1(self):
         import cPickle as pickle
-        cmds = pickle.load(open('lastcmds.pypickle'))
+        cmds = pickle.load(open('last.pypickle'))
         b = Bipartitioner(cmds)
         print b.result()
         
