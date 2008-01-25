@@ -174,56 +174,131 @@ class ScriptStatistic:
 class Bipartitioner:
     """Splits an approximately-min-cut partition of a flow graph."""
     def __init__(self, cmdList):
+        tolerance = 0.2
         self.original = cmdList
         
         total = len(cmdList)
-        halftotal = total/2
+        self._limits = ((0.5-tolerance)*total,(0.5+tolerance)*total)
+        self._halftotal = total/2
         # arbitrarily split from ordered sequence
-        self.sets = [set(cmdList[:halftotal]), set(cmdList[halftotal:])]
+        self.sets = [set(cmdList[:self._halftotal]),
+                     set(cmdList[self._halftotal:])]
+        for i in range(6):
+            state = self._makePass()
+            print "iteration gain: %d, sizes: %d %d" %(state[0],
+                                                       len(state[1]),
+                                                       len(state[2]))
+            if state[0] < 0:
+                print "No gain, no more passes needed."
+                break
+            self.sets = [state[1],state[2]]
+
         
-        locked = set() # locked nodes
+
+    def _makePass(self):
+        self._locked = set() # locked nodes
         # while cutsize is reduced
         # while valid moves exist
         # use bucket data to find unlocked node in each partition that most improves cutsize
         (ba, bb) = self._makeBuckets(self.sets)
-        print "Buckets One", ba
-        print "Bucket Two", bb
-        maxa = max(ba)
-        maxa = (maxa, ba[maxa])
-        maxb = max(bb)
-        maxb = (maxb, bb[maxb])
-        print "maxa",maxa,id(maxa[1][0])
-        print "maxb",maxb,id(maxb[1][0])
+        self._buckets = [ba,bb]
+        #print "Buckets One", ba
+        #print "Bucket Two", bb
         self._writeSetState("stage0")
+        print "(%d, %d)" %(tuple(map(len,self.sets)))
+        def getMax(bucket):
+            while True:
+                m = max(bucket)
+                c = bucket[m]
+                if c:
+                    return (m,c)
+                bucket.pop(m)
+                                    
+        states = []
+        gainstate = 0
+
+        # iterate through a pass, move at most half the nodes.
+        for i in range(self._halftotal):
+            #self._printBucketState()
+            maxa = getMax(ba)
+            maxb = getMax(bb)
+            if maxa[0] > maxb[0]:
+                # move from a to b
+                self._moveChainNode(maxa[1], self.sets, (ba,bb))
+                gainstate += maxa[0]
+            else:
+                # move from b to a
+                self._moveChainNode(maxb[1], [self.sets[1],self.sets[0]], (bb,ba))
+                gainstate += maxb[0]
+
+            self._writeSetState("stage%d"%(i+1))
+            states.append((gainstate, self.sets[0].copy(), self.sets[1].copy()))
+            #print "(%d, %d)" %(tuple(map(len,self.sets)))
+            if not (self._limits[0] < len(self.sets[0]) < self._limits[1]):
+                break
+        # backtrack and return best state
+        return max(states)
+
+    def _printBucketState(self):
+        for i in range(len(self._buckets)):
+            b = self._buckets[i]
+            print "Bucket %d" %i
+            items = b.items()
+            items.sort()
+            print "\n".join(map(lambda i: "%d -> %s" %(i[0],
+                                                       str(map(id,i[1]))),
+                                items))
+            print "size:", reduce(lambda x,y: x + len(y[1]), items, 0)
+
+
+    def _moveChainNode(self, chain, sets, buckets):
+        """When we move a node, it gets locked, so... it doesn't actually
+        need to be considered anymore: so we don't have to add it to
+        a bucket.  """
+        #self._printBucketState()        
+        e = chain.pop()
+        if e in self._locked:
+            print "error! can't move locked node."
+        sets[0].remove(e)
+        sets[1].add(e)
+        e.biPartBuckets = [e.biPartBuckets[1],e.biPartBuckets[0]]
+        e.biPartSets = [e.biPartSets[1],e.biPartSets[0]]
+
+        #find new gain: (We can actually skip this step)
+        #self._addToBucket(buckets[1], e, sets[1], sets[0])
+        # add moved node to locked set
+        self._locked.add(e)
+        for n in (e.parents + e.children):
+            self._updateBucketNode(n)
+
+        #self._printBucketState()        
         return
-        if maxa[0] > maxb[0]:
-            # move from a to b
-            chain = maxa[1]
-            e = chain.pop()
-            setA.remove(e)
-            setB.add(e)
-            #find new gain:
-            g = self._findGain(e, setB, setA)
-            
-            
-        else:
-            # move from b to a
-            pass
 
-        
-        # make the move
 
-        # lock moved node
-        # update nets
-        
-        pass
+    def _updateBucketNode(self, node):
+        # find what bucket node we're in.
+        mybucket = node.biPartBuckets[0]
+        mysets = node.biPartSets
+        myChain = node.biPartChain[0][node.biPartChain[1]]
+        # we weren't in the chain: not bucketed anymore.
+        if node not in myChain:
+            assert node in self._locked
+            return # don't bother to update.
+        # take myself out of the chain
+        before = len(myChain)
+        myChain.remove(node) #this is O(len(bucket)), w/o double L-L
 
-    
-    def _updateGain(self, c, bucket, current, remote):
-        # remove from current chain
-        gain = self._findGain(c, current, remote)
-        # add to new chain.
-        pass
+        if len(myChain) > 10:
+            print "chain length > 10:", len(myChain)
+        self._addToBucket(mybucket, node, mysets[0], mysets[1])
+        # 
+       
+    def _addToBucket(self, bucket, cmd, a, b):
+        gain = self._findGain(cmd, a,b)
+        #print "looking for gain",gain, bucket[gain]
+        bucket[gain] = bucket.get(gain,[]) + [cmd]
+        #print "newgain",gain, bucket[gain]
+        cmd.biPartChain = (bucket,gain) # faulty if we put bucket[gain] here
 
         
     def _makeBuckets(self, sets):
@@ -240,13 +315,8 @@ class Bipartitioner:
         rs.reverse()
         map(fieldAdder(rb,rs), sets[1])
 
-        def addToBucket(bucket, cmd, a, b):
-            gain = self._findGain(cmd, a,b)
-            #print "looking for gain",gain, bucket[gain]
-            bucket[gain] = bucket.get(gain,[]) + [cmd]
-            #print "newgain",gain, bucket[gain]
-        map(lambda c: addToBucket(buck[0], c, sets[0], sets[1]), sets[0])
-        map(lambda c: addToBucket(buck[1], c, sets[1], sets[0]), sets[1])
+        map(lambda c: self._addToBucket(buck[0], c, sets[0], sets[1]), sets[0])
+        map(lambda c: self._addToBucket(buck[1], c, sets[1], sets[0]), sets[1])
         return buck
 
 
@@ -263,6 +333,7 @@ class Bipartitioner:
         beforecount = len(filter(lambda x: x in dest,
                                  cmd.parents + cmd.children))
         aftercount = len(cmd.parents)+len(cmd.children) - beforecount
+        cmd.bipartGain = beforecount-aftercount
         return beforecount - aftercount
 
         
@@ -270,7 +341,7 @@ class Bipartitioner:
 
     def _writeSetState(self,label):
         stage0 = [
-            "digraph stage0 {",
+            "digraph %s {" % label,
             "subgraph clustera { ",
             str(ScriptStatistic.statDagGraph(self.sets[0])),
             "}",
@@ -282,7 +353,7 @@ class Bipartitioner:
         pass
     
     def result(self):
-        return None #FIXME
+        return self.sets[0],self.sets[1]
     
 
 class Tracker:
