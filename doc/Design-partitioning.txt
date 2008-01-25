@@ -1,0 +1,33 @@
+In parallel execution of the work, performance can vary significantly
+depending on the chosen scheduling algorithm.  In worse cases, the
+algorithm could produce a schedule that maximizes data transferred
+between workers.  In better cases, I/O between nodes is minimized.  A
+simple schedule that distributes available-and-ready work round-robin
+among nodes could cause each newly scheduled command to require source
+data transfer from another node.  Most script workflows can be
+visually partitioned to isolate graph sections so that most of the
+time is spent computing rather than exchanging data between workers.
+
+So this motivates an algorithm that schedules larger parts of the
+workflow to workers, thus minimizing manager involvement.  At the same
+time, these fragments can be chosen such that they can be executed
+with reduced external I/O transfer.
+
+Thus we implemented KLFM bipartitioning, to be applied recursively
+depending on the number of available worker nodes.  Unfortunately,
+we can imagine a case where the partitioner chooses a split that is
+poor for execution.  If we consider the workflow visually where
+progress proceeds from top to bottom, we can imagine a partition where
+the cut is horizontal, that is, one that creates an upper and lower
+partition.  Thus the lower partition may be completely dependent on
+the upper partition's results, thus making the split worthless for
+parallelization purposes.
+
+
+So, now our partitioning must be applied in such a way that it
+considers this issue of horizontal versus vertical partitioning.  It
+is possible that the workflow consists of a single long chain, in
+which no amount of partitioning will provide parallelization benefit.  
+
+While that is being considered, we can think about tweaks to the
+original simple scheduler.  Perhaps we can apply a hybrid approach.  
