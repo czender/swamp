@@ -170,6 +170,27 @@ class ScriptStatistic:
 
     def _writeScript(self):
         pass
+
+class PlainPartitioner:
+    """Find partitions based on the subtrees of each root (parent-less) node.
+    Find subtrees, then intersections.
+    Goal: convert a normal flowgraph into a graph of clusters.  This will aid
+    in coarser-grained work distribution, which should result in reduced
+    management overhead and naturally better locality."""
+    def __init__(self, cmdList):
+        pass
+
+    def compute(self):
+        """perform partitioning according to the chosen parameters FIXME"""
+        # some possible parameters:
+        # minimum size: min node count for a cluster
+        #  (should be small, or some fraction of total graph size)
+        # num splits: desired number of resultant partitions. Partitioning will continue until there are no more "parallelizing splits", or the total partition count is >= num splits
+        pass
+
+    def result(self):
+        """return a list of connected *clusters* which can be scheduled."""
+        return
         
 class Bipartitioner:
     """Splits an approximately-min-cut partition of a flow graph."""
