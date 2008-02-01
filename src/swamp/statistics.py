@@ -16,6 +16,7 @@
 import md5
 import operator
 import time
+from collections import deque
 
 # (semi-) third-party imports
 #import twisted.web.resource as tResource
@@ -171,6 +172,22 @@ class ScriptStatistic:
     def _writeScript(self):
         pass
 
+class CommandCluster:
+    def __init__(self, cmds, roots):
+        self.cmds = set(cmds)
+        if not roots:
+            roots = self.computeRoots()
+            self.roots = roots
+        self.parentcmds = reduce(lambda x,y: x.update(y.parents),
+                                 roots, set())
+    def computeRoots(self):
+        return filter(lambda cmd: 0 == len(filter(lambda c: c in self.cmds,
+                                                  cmd.parents)),
+                      self.cmdList)
+            
+    def __contains__(self, item):
+        return item in self.cmds
+
 class PlainPartitioner:
     """Find partitions based on the subtrees of each root (parent-less) node.
     Find subtrees, then intersections.
@@ -178,7 +195,38 @@ class PlainPartitioner:
     in coarser-grained work distribution, which should result in reduced
     management overhead and naturally better locality."""
     def __init__(self, cmdList):
+        self.cmdList = cmdList
+        self.ready = None
+        self.compute()
         pass
+
+    def computeRootsChildren(self):
+        finished = set()
+        ready = lambda cmd: 0 == len(filter(lambda c: c not in finished,
+                                            cmd.parents))
+        r = []
+        q = []
+        for c in self.cmdList:
+            if ready(c):
+                r.append(c)
+            else:
+                q.append(c)
+        return (r,q)
+
+    def computeRoots(self):
+        return filter(lambda cmd: 0 == len(cmd.parents), self.cmdList)
+
+    def computeChildren(self, root):
+        """perform DFS search of root's descendents"""
+        d = deque()
+        bag = set()
+        d.append(root)
+        while d:
+            elem = d.pop()
+            bag.add(elem)
+            newElems = set(elem.children).difference(bag)
+            d.extend(newElems)
+        return bag
 
     def compute(self):
         """perform partitioning according to the chosen parameters FIXME"""
@@ -186,11 +234,28 @@ class PlainPartitioner:
         # minimum size: min node count for a cluster
         #  (should be small, or some fraction of total graph size)
         # num splits: desired number of resultant partitions. Partitioning will continue until there are no more "parallelizing splits", or the total partition count is >= num splits
+        r = self.computeRoots() # this is O(n)
+        rc = map(lambda n: (n, self.computeChildren(n)), r) # O(n)
+        # now I have a list of roots and their corresponding sets.
+        # now compute the intersection. (between O(kn) and O(n^2)
+        # This code does ~2x required work because it computes the
+        # symmetric intersections.
+        intersects = map(lambda r: (r[0], r[1], map(lambda r2: r[1].intersection(r2[1]),
+                                       filter(lambda r1:r1!=r, rc))),rc)
+        # actually, I think we can skip a lot of this.  We want to pull the intersection off *anyway*. So, how about it if we just pull off the first intersection we find.  Sort the list by tree size, and then pull the largest, find its intersections, and pull the largest intersection off.  This creates two or three new trees.
+        print len(r), "roots"
+        
+        print "\n".join(map(lambda t: "%d : %d children, %s" %(id(t[0]),
+                                                               len(t[1]),
+                                                               str([len(x) for x in t[2]])
+                                                               ), intersects))
         pass
 
     def result(self):
         """return a list of connected *clusters* which can be scheduled."""
-        return
+        if not self.ready:
+            self.compute()
+        return self.ready
         
 class Bipartitioner:
     """Splits an approximately-min-cut partition of a flow graph."""
@@ -430,7 +495,9 @@ class Test:
     def test1(self):
         import cPickle as pickle
         cmds = pickle.load(open('last.pypickle'))
-        b = Bipartitioner(cmds)
+        #b = Bipartitioner(cmds)
+        b = PlainPartitioner(cmds)
+        
         print b.result()
         
                            
