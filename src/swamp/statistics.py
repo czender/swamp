@@ -173,20 +173,75 @@ class ScriptStatistic:
         pass
 
 class CommandCluster:
+    """A cluster of commands.
+    This is a useful abstraction, because it represents a set of commands that can be scheduled for execution on a particular execution unit.
+    Characteristics:
+    -- Nodes are either "root" or "body".
+    (forall n in root.parents, n not in cluster)
+    (forall n in body.parents, n in cluster)
+    Nodes may not be mixed root-body, as this means that we must block root execution until child mixed nodes have their external deps satisfied, or else the cluster would require internal synchronization. (Actually, the conservative route is not that bad-- the performance penalty is similar to the case where the cluster has multiple roots(which would get blocked similarly).
+    
+    These characteristics are in flux.
+    """
     def __init__(self, cmds, roots):
         self.cmds = set(cmds)
         if not roots:
-            roots = self.computeRoots()
-            self.roots = roots
-        self.parentcmds = reduce(lambda x,y: x.update(y.parents),
+            #roots = self._computeRoots() # this computes 'pure' root nodes
+            print "compute roots"
+            roots = self._computeExtDepNodes()
+        self.roots = roots
+        self.parentCmds = reduce(lambda x,y: x.union(y.parents), # O(n)
                                  roots, set())
-    def computeRoots(self):
+        self.parents = set()
+        self.children = set()
+        pass
+        
+    def updateChildCmds(self):
+        children = set()
+        map(lambda c: children.add(c), self.cmds)
+        self.childCmds = children.difference(self.cmds)
+        pass
+    def addParent(self, cluster):
+        assert isinstance(cluster, CommandCluster)
+        self.parents.add(cluster)
+        cluster.addChild(self)
+        return cluster
+
+    def addChild(self, cluster):
+        assert isinstance(cluster, CommandCluster)
+        self.children.add(cluster)
+        if self not in cluster.parents:
+            cluster.addParent(self)
+        return cluster
+
+    def exciseSelf(self):
+        for c in self.children:
+            c.parents.remove(self)
+        self.children.clear()
+        for p in self.parents:
+            p.children.remove(self)
+        self.parents.clear()
+        pass
+    
+    def _computeExtDepNodes(self):
+        return filter(lambda cmd: # either no parents, or have ext parents
+                      (0 == len(cmd.parents)) or
+                      len(filter(lambda c: c not in self.cmds,
+                                 cmd.parents)),
+                      self.cmds)
+    def _computeRoots(self): # O(n) 
         return filter(lambda cmd: 0 == len(filter(lambda c: c in self.cmds,
                                                   cmd.parents)),
-                      self.cmdList)
-            
-    def __contains__(self, item):
+                      self.cmds)
+    
+    def __contains__(self, item): ## O(1)?
         return item in self.cmds
+
+    # make iterable, but prefer direct access on self.cmds for set ops
+    def __iter__(self): 
+        return self.cmds.__iter__()
+    def __len__(self):
+        return len(self.cmds)
 
 class PlainPartitioner:
     """Find partitions based on the subtrees of each root (parent-less) node.
@@ -196,6 +251,8 @@ class PlainPartitioner:
     management overhead and naturally better locality."""
     def __init__(self, cmdList):
         self.cmdList = cmdList
+        self.cluster = CommandCluster(cmdList, None)
+        self.log = []
         self.ready = None
         self.compute()
         pass
@@ -228,13 +285,102 @@ class PlainPartitioner:
             d.extend(newElems)
         return bag
 
+    def rootSplit(self, cluster):
+        #rc = map(lambda n: (n, self.computeChildren(n)), cluster.roots) # O(n)
+        rc = map(lambda n: CommandCluster(self.computeChildren(n),[n]),
+                 cluster.roots) # O(n)
+        # Fix cluster dependencies: (it's unclear whether we should
+        # bother tracking these now, or just make everything
+        # consistent when we actually need the info.)
+        # For debugging, it helps to have a graph.
+
+        parents = cluster.parents
+        for c in rc: # for each new root cluster, connect it with its parent.
+            rnodeparents = c.parentCmds # parent commands of this cluster
+            rcparents = reduce(lambda n0,n:
+                               n0.union(filter(lambda c:
+                                                n in c, parents)),
+                               rnodeparents, set())
+            map(c.addParent, rcparents) # add the cluster parents
+            
+        children = cluster.parents  # FIXME: this for loop is not done.
+        for c in rc: # for each new root cluster, connect it with its parent.
+            c.updateChildCmds()
+            nchildren  = c.childCmds # child commands of this cluster
+            rcchildren = reduce(lambda n0,n:
+                                n0.union(filter(lambda c:
+                                                 n in c, children)),
+                               nchildren, set())
+            map(c.addParent, rcchildren) # add the cluster parents
+        cluster.exciseSelf()
+            
+        # now, apply pairwise intersection.  Don't compute all
+        # intersects first because that's expensive and
+        # usually not necessary.
+        isets = []
+        for i0 in range(len(rc)):
+            l = rc[i0].cmds
+            for i1 in range(i0+1,len(rc)):
+                # FIXME: would be nice to link the clusters here.
+                r = rc[i1].cmds
+                intersect = l.intersection(r)
+                if not intersect:
+                    continue
+                iset = CommandCluster(intersect,None)
+                l.difference_update(iset.cmds)
+                iset.addParent(rc[i0])
+                
+                for i2 in range(i1,len(rc)):
+                    old = len(rc[i2])
+                    rc[i2].cmds.difference_update(iset)
+                    if len(rc[i2]) < old:
+                        iset.addParent(rc[i2])
+                # We remove the intersection from the other root sets
+                # to prevent duplicate isets from being created,
+                # and update ancestry if needed.
+                
+                isets.append(iset)
+                self.log.append("split intersect of %d and %d (%d: %d)" %
+                                (i0, i1, len(rc), id(cluster)))
+        # Now, we have fully-independent root clusters and a set of
+        # child clusters.
+        return (rc, isets)
+
     def compute(self):
         """perform partitioning according to the chosen parameters FIXME"""
         # some possible parameters:
         # minimum size: min node count for a cluster
         #  (should be small, or some fraction of total graph size)
         # num splits: desired number of resultant partitions. Partitioning will continue until there are no more "parallelizing splits", or the total partition count is >= num splits
+        minSplits = 3
+        (roots, inters) = self.rootSplit(self.cluster)
+        if (len(roots) + len(inters)) < minSplits:
+            # split intersects.
+            inters = map(self.rootSplit, inters)
+        print "nodes", len(self.cluster)
+        print "roots", len(roots)
+        open("pass1.dot","w").write(self.makeStateGraph("pass1",roots))
+        pass
+    def makeStateGraph(self, label, roots):
+        clusstr = [
+            "digraph %s {" % label]
+        for r in roots:
+            d = deque()
+            bag = set()
+            d.append(r)
+            while d:
+                elem = d.pop()
+                clusstr.append("subgraph cluster%s { %s }" %(
+                    id(elem), str(ScriptStatistic.statDagGraph(elem.cmds))))
+                bag.add(elem)
+                newElems = set(elem.children).difference(bag)
+            d.extend(newElems)
+        clusstr.append(" }")
+        return "\n".join(clusstr)
+
+    def oldCompute(self):
         r = self.computeRoots() # this is O(n)
+        
         rc = map(lambda n: (n, self.computeChildren(n)), r) # O(n)
         # now I have a list of roots and their corresponding sets.
         # now compute the intersection. (between O(kn) and O(n^2)
