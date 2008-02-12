@@ -26,7 +26,7 @@ from SOAPpy import SOAPProxy
 # swamp imports
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
-
+from swamp.partitioner import PlainPartitioner
 
 
 
@@ -304,6 +304,73 @@ class ParallelDispatcher:
         pass
     pass # end class ParallelDispatcher
 
+class NewParallelDispatcher:
+    def __init__(self, config, executorList):
+        self.config = config
+        self.executors = executorList
+        #self.finished = {}
+        self.okayToReap = True
+        # not okay to declare file death until everything is parsed.
+        self.execLocation = {} # logicalout -> executor
+        #self.sleepTime = 0.100 # originally set at 0.200
+        #self.running = {} # (e,etoken) -> cmd
+        #self.execPollRR = None
+        #self.execDispatchRR = None
+        #self.result = None
+        pass
+
+    def _dispatchRoots(self):
+        unIdleExecutors = 0
+        numExecutors = len(self.executors)
+        while (unIdleExecutors < numExecutors) and self.rootClusters:
+            e = self.polledExecutor.next()
+            if e.needsWork():
+                e.dispatch(self.rootClusters.next())
+                unIdleExecutors = 0
+            else:
+                unIdleExecutors += 1
+
+    def dispatchAll(self, cmdList, hook=lambda f:None):
+        # Break things into clusters:
+        p = PlainPartitioner(cmdList)
+        self.clusters = p.result()
+        
+        # Then put ready clusters in queues for each executor.
+        self.rootClusters = iter(self.clusters[0])
+        self.polledExecutor = itertools.cycle(self.executors)
+        
+        self._dispatchRoots()
+        return
+        #log.debug("dispatching cmdlist="+str(cmdList))
+        self.running = {} # token -> cmd
+        self.execPollRR = itertools.cycle(self.executors)
+        self.execDispatchRR = itertools.cycle(self.executors)
+        (self.ready, self.queued) = self.extractReady(cmdList)
+
+        # Consider 'processor affinity' to reduce data migration.
+        while True:
+            # if there are free slots in an executor, run what's ready
+            if self._allBusy() or not self.ready:
+                if not self.running: # done!
+                    break
+                log.debug("waiting")
+                r = self._waitAnyExecutor(hook)
+                log.debug("wakeup! %s" %(str(r)))
+                if r[1] != 0:
+                    # let self.result bubble up.
+                    return
+                #self._graduate(token, code)
+            else:
+                # not busy + jobs to run, so 'make it so'
+                cmd = heappop(self.ready)
+                self.dispatch(cmd)
+            continue # redundant, but safe
+        # If we got here, we're finished.
+        self.result = True
+        #log.debug("parallel dispatcher finish, with fileloc: " + self.fileLoc)
+        pass # end def dispatchAll
+    
+
 class FakeExecutor:
     def __init__(self):
         self.running = []
@@ -322,6 +389,42 @@ class FakeExecutor:
         else:
             raise StandardError("Tried to join non-running job")
     pass
+
+class NewFakeExecutor:
+    def __init__(self):
+        self.running = []
+        self.fakeToken = 0
+        self.fakeSlots = 2
+        pass
+
+    def _fakeFinishExecution(self):
+        pass
+
+    def needsWork(self):
+        # cache this.
+        self._fakeFinishExecution()
+        return len(self.running) < self.fakeSlots
+        return (len(self.running) < self.slots) and not self.rpc.busy()
+
+    def dispatch(self, cluster):
+        print "fakedispatching", cluster
+        self.running.append(cluster)
+
+    def launch(self, cmd, locations = []):
+        cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
+        print "fakeran",cmdLine
+        self.fakeToken += 1
+        self.running.append(self.fakeToken)
+        return self.fakeToken
+    def join(self, token):
+        if token in self.running:
+            self.running.remove(token)
+            return True  # return False upon try-but-fail
+        else:
+            raise StandardError("Tried to join non-running job")
+    pass
+
+    
 
 class LocalExecutor:
     def __init__(self, binaryFinder, filemap, slots=1):
@@ -742,4 +845,23 @@ class RemoteExecutor:
         else:
             raise StandardError("RemotExecutor.join: bad token")
     pass # end class RemoteExecutor 
+
+
+def makeTestConfig():
+    
+    pass
+
+def makeFakeExecutor():
+    return NewFakeExecutor()
+
+def loadCmds(filename):
+    import cPickle as pickle
+    return pickle.load(open(filename))
+
+def testDispatcher():
+    config = makeTestConfig()
+    e = [makeFakeExecutor()]
+
+    pd = NewParallelDispatcher(config, e)
+    pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
 

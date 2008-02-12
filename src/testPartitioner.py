@@ -1,6 +1,6 @@
 # $Id: $
 """
-   statistics -- a module for handling script and performance statistics
+tester of my code.
 
 """
 

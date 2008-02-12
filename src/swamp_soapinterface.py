@@ -26,10 +26,7 @@ import threading
 
 # (semi-) third-party imports
 import SOAPpy
-import twisted.web.soap as tSoap
 import twisted.web.resource as tResource
-import twisted.web.server as tServer
-import twisted.web.static as tStatic
 
 # SWAMP imports
 
@@ -46,6 +43,29 @@ class LaunchThread(threading.Thread):
         self.updateFunc(self) # put myself as placeholder
         self.updateFunc(self.launchFunc()) # update with real token
 
+class MoveMeCallbackResource(tResource.Resource):
+    # should inherit twisted.web.resource.Resource
+    # if we override init, we need to explicitly call parent constructor
+    def __init__(self):
+        self.
+    #def __init__(self, urlhandler):
+     #   self.urlhandler = urlhandler
+        #     def getChild(self, name, request):
+        #         if name == '':
+        #             return self
+        #         return Resource.getChild(
+        #             self, name, request)
+    def getChild(self, path, request):
+        # getchild is necessary to use numbered syntax.
+        return self
+    def render_GET(self, request):
+        # here, we should check the handler to do the right thing.
+        key = "&".join(request.prepath)
+        if key in self.urlTable:
+            return self.urlTable[key]
+        return """<html>
+      Hello, world! I am located at %r. and you requested
+    </html>""" % (request.prepath)
 
 class StandardJobManager:
     """StandardJobManager manages submitted tasks dispatched by this system.
@@ -245,9 +265,11 @@ class StandardJobManager:
         log.debug("discarding for token %d" %(token))
         pass
 
+
     def startTwistedServer(self):
         self.config.serviceInspectPath = "inspect"
-        custom = [("inspect", inspector.newResource(self.config))]
+        custom = [("inspect", inspector.newResource(self.config)),
+                  ("worker", MoveMeCallbackResource())]
         self.config.runtimeJobManager = self
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,

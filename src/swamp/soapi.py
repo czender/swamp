@@ -79,7 +79,8 @@ class Instance:
         # init listening
         reactor.listenTCP(self.soapPort, tServer.Site(root))
 
-        log.debug("Starting worker interface at: %s"% self.url)
+        log.debug("Starting SWAMP interface at: %s"% self.url)
+        print "Starting SWAMP interface at: %s"% self.url
         extInit()
         reactor.run()
         pass

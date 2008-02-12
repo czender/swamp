@@ -17,6 +17,7 @@ import threading
 # (semi-) third-party module imports
 import SOAPpy
 
+
 # SWAMP imports 
 from swamp import log
 from swamp_common import *
@@ -28,6 +29,7 @@ from swamp.mapper import FileMapper
 # FIXME: reorg code to not need these two:
 from swamp.execution import LocalExecutor
 from swamp.execution import NcoBinaryFinder
+
 
 
 class LaunchThread(threading.Thread):
@@ -367,6 +369,8 @@ class JobManager:
     def ping(self):
         return "PONG %f" %time.time()
 
+        
+
     def dangerousRestart(self, auth):
         # Think about what sort of checks we should do to prevent orphan
         # processes and resources. FIXME.
@@ -376,6 +380,7 @@ class JobManager:
 
     def grimReap(self):
         self.registerThread.active = False
+
 
     def listenTwisted(self):
         self.config.serviceInspectPath = "inspect"

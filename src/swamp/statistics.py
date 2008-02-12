@@ -143,9 +143,6 @@ class ScriptStatistic:
     def _dagGraph(self, cmdList):
         return partitioner.statDagGraph(cmdList)
 
-    def _partition(self, cmdList):
-        b = Bipartitioner(cmdList)
-        return b.result()
     def _dbgPickleCmds(self, cmdList, filename):
         import cPickle as pickle
         import copy
