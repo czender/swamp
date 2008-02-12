@@ -7,7 +7,7 @@
 
 # 
 # Copyright (c) 2007 Daniel Wang, Charles S. Zender
-# This sample file is part of SWAMP.
+# This source file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 #
 
@@ -64,6 +64,7 @@ class CommandCluster:
     """
     def __init__(self, cmds, roots):
         self.cmds = set(cmds)
+
         if not roots:
             #roots = self._computeRoots() # this computes 'pure' root nodes
             #print "compute roots"
@@ -232,14 +233,33 @@ class PlainPartitioner:
         #  (should be small, or some fraction of total graph size)
         # num splits: desired number of resultant partitions. Partitioning will continue until there are no more "parallelizing splits", or the total partition count is >= num splits
         minSplits = 3
+        clustermetalist = []
         (roots, inters) = self.rootSplit(self.cluster)
+        clustermetalist.append(roots)
         if (len(roots) + len(inters)) < minSplits:
             # split intersects.
             inters = map(self.rootSplit, inters)
+            clustermetalist.append(inters[0])
+            clustermetalist.append(inters[1])
+        else:
+            clustermetalist.append(inters)
+            
         print "nodes", len(self.cluster)
         print "roots", len(roots)
+        self.ready = clustermetalist
+        # The metalist is a list of lists of clusters.
+        # list[0] is a list of clusters that are ready for execution.
+        # list[1] is a list of clusters that are ready after all clusters
+        # in list[0] are complete.  Some or all clusters may be ready
+        # earlier, but each cluster requires some finite progress in one
+        # or more clusters in list[0], otherwise the cluster could be
+        # placed in list[0].
+        # list[i+1] is related to list[i] similarly as list[1] is related
+        # to list[0]
         open("pass1.dot","w").write(self.makeStateGraph("pass1",roots))
         pass
+
+
     def makeStateGraph(self, label, roots):
         clusstr = [
             "digraph %s {" % label]
