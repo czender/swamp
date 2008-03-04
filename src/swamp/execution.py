@@ -309,93 +309,6 @@ class ParallelDispatcher:
 
 
 
-class NewParallelDispatcher:
-    def __init__(self, config, executorList):
-        self.config = config
-        self.executors = executorList
-        #self.finished = {}
-        self.okayToReap = True
-        # not okay to declare file death until everything is parsed.
-        self.execLocation = {} # logicalout -> executor
-        #self.sleepTime = 0.100 # originally set at 0.200
-        #self.running = {} # (e,etoken) -> cmd
-        #self.execPollRR = None
-        #self.execDispatchRR = None
-        #self.result = None
-        self.count = 0
-        pass
-
-    def _dispatchRoots(self):
-        unIdleExecutors = 0
-        numExecutors = len(self.executors)
-        while (unIdleExecutors < numExecutors) and self.rootClusters:
-            e = self.polledExecutor.next()
-            if e.needsWork():
-                e.dispatch(self.rootClusters.next(), self._registerCallback)
-                unIdleExecutors = 0
-            else:
-                unIdleExecutors += 1
-
-    def dispatchAll(self, cmdList, hook=lambda f:None):
-        # Break things into clusters:
-        p = PlainPartitioner(cmdList)
-        self.clusters = p.result()
-        
-        # Then put ready clusters in queues for each executor.
-        self.rootClusters = iter(self.clusters[0])
-        self.polledExecutor = itertools.cycle(self.executors)
-        
-        self._dispatchRoots()
-        
-        # remaining scheduling and dispatching will run as
-        # asynchronously-initiated callbacks.
-
-        return
-        #log.debug("dispatching cmdlist="+str(cmdList))
-        self.running = {} # token -> cmd
-        self.execPollRR = itertools.cycle(self.executors)
-        self.execDispatchRR = itertools.cycle(self.executors)
-        (self.ready, self.queued) = self.extractReady(cmdList)
-
-        # Consider 'processor affinity' to reduce data migration.
-        while True:
-            # if there are free slots in an executor, run what's ready
-            if self._allBusy() or not self.ready:
-                if not self.running: # done!
-                    break
-                log.debug("waiting")
-                r = self._waitAnyExecutor(hook)
-                log.debug("wakeup! %s" %(str(r)))
-                if r[1] != 0:
-                    # let self.result bubble up.
-                    return
-                #self._graduate(token, code)
-            else:
-                # not busy + jobs to run, so 'make it so'
-                cmd = heappop(self.ready)
-                self.dispatch(cmd)
-            continue # redundant, but safe
-        # If we got here, we're finished.
-        self.result = True
-        #log.debug("parallel dispatcher finish, with fileloc: " + self.fileLoc)
-        pass # end def dispatchAll
-    
-    def _registerCallback(self, cmd, isLocal):
-        if isLocal:
-            return (lambda : self._graduate(cmd, False),
-                    lambda : self._graduate(cmd, True))
-        else:
-            print "Uh oh, I don't know how to do this yet"
-            return ()
-    def _graduate(self, cmd, fail):
-        print "graduate",cmd.cmd, cmd.argList
-        if fail:
-            print "we failed"
-        else:
-            print "succeeded"
-        self.count += 1
-        pass
-
 
 class FakeExecutor:
     def __init__(self):
@@ -430,6 +343,7 @@ class NewFakeExecutor:
         self._availFiles = set()
         self._runningCmds = []
         self.thread.start()
+        self.idleTicks = 0
         pass
 
 
@@ -451,6 +365,11 @@ class NewFakeExecutor:
             # sleep 
             time.sleep(self.tickSize)
             print "tick!"
+            self.idleTicks += 1
+            if self.idleTicks >= self.avgCmdTime*20:
+                print "death by boredom"
+                self.alive = False 
+
     def _dispatchSlots(self, slots):
         dispatched = 0
         for x in range(slots):
@@ -487,6 +406,8 @@ class NewFakeExecutor:
         # report results
         self._touchUrl(cmd._callbackUrl[0])
         # do callback
+        self._idleTicks = 0
+        
     def _touchUrl(self, url):
         if isinstance(url, type(lambda : True)):
             print "calling!"
@@ -972,10 +893,13 @@ def loadCmds(filename):
 def testDispatcher():
     config = makeTestConfig()
     e = [makeFakeExecutor()]
-
-    pd = NewParallelDispatcher(config, e)
+    import swamp.scheduler as scheduler
+    pd = scheduler.NewParallelDispatcher(config, e)
     pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
     time.sleep(4)
     
     e[0].forceJoin()
     print "cmds exec'd", pd.count
+
+def testLocalDispatch():
+    pass

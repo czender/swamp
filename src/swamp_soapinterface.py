@@ -47,7 +47,8 @@ class MoveMeCallbackResource(tResource.Resource):
     # should inherit twisted.web.resource.Resource
     # if we override init, we need to explicitly call parent constructor
     def __init__(self):
-        self.
+        #self.hello
+        pass
     #def __init__(self, urlhandler):
      #   self.urlhandler = urlhandler
         #     def getChild(self, name, request):
