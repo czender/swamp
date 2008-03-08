@@ -10,6 +10,7 @@
 CLIENTTAR = swamp-client.tar.bz2
 SOURCETAR = swamp.tar.bz2
 SERVICETAR = swamp-service.tar.bz2
+TAGSERVICETAR = swamp-service-$(TAG).tar.bz2
 DISTDIR = dist
 CLIENT_DISTDIR = $(DISTDIR)/swamp-client
 SOURCE_DISTDIR = $(DISTDIR)/swamp
@@ -18,6 +19,7 @@ SERVICE_DISTDIR = $(DISTDIR)/swamp-service
 CLIENTTARPATH = $(DISTDIR)/$(CLIENTTAR)
 SOURCETARPATH = $(DISTDIR)/$(SOURCETAR)
 SERVICETARPATH = $(DISTDIR)/$(SERVICETAR)
+TAGSERVICEPATH = $(DISTDIR)/$(TAGSERVICETAR)
 
 TARBALLS = $(CLIENTTARPATH) $(SOURCETARPATH) $(SERVICETARPATH)
 
@@ -28,6 +30,8 @@ clientdist:	$(CLIENTTARPATH)
 sourcedist:	$(SOURCETARPATH)
 
 servicedist:	$(SERVICETARPATH)
+
+tagserver:	$(TAGSERVICEPATH)
 
 clean:	
 	rm -rf $(TARBALLS) $(DISTDIR)
@@ -62,3 +66,16 @@ $(SERVICETARPATH):	$(SERVICEFILES) src/swamp/* # everything the server needs
 	cd $(DISTDIR) && tar cjvf $(SERVICETAR) swamp-service
 	rm -r $(SERVICE_DISTDIR)
 	md5sum $(SERVICETARPATH) > $(SERVICETARPATH).md5
+
+# this is a little broken: we pull swamp/ from repo, but everything else from the working dir.
+$(TAGSERVICEPATH):	 
+	echo "building tag --$(TAG)--"
+	mkdir -p $(SERVICE_DISTDIR)
+	svn export http://swamp.googlecode.com/svn/tags/$(TAG) $(SERVICE_DISTDIR)/tmp_buildtree
+	cp -r $(addprefix $(SERVICE_DISTDIR)/tmp_buildtree,$(SERVICEFILES_)) $(SERVICE_DISTDIR)
+	cp -r $(SERVICE_DISTDIR)/tmp_buildtree/src/swamp $(SERVICE_DISTDIR)/swamp
+	rm -r $(SERVICE_DISTDIR)/tmp_buildtree
+	cd $(DISTDIR) && tar cjvf $(TAGSERVICETAR) swamp-service
+	rm -r $(SERVICE_DISTDIR)
+	md5sum $(TAGSERVICEPATH) > $(TAGSERVICEPATH).md5
+
