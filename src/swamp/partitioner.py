@@ -13,7 +13,7 @@
 
 # Python dependencies:
 from collections import deque
-
+import operator
 
 
 def statDagGraph(cmdList, record=set()):
@@ -102,7 +102,16 @@ class CommandCluster:
             p.children.remove(self)
         self.parents.clear()
         pass
-    
+
+    def ready(self, finishedCmds):
+        # If all of my roots are ready to run, then I am ready.
+        f = set(finishedCmds) # safe, even if finishedCmds is a set
+
+        return reduce(operator.and_,
+                      map(lambda cmd: f.issuperset(cmd.parents),
+                          self.roots),
+                      True)
+        
     def _computeExtDepNodes(self):
         return filter(lambda cmd: # either no parents, or have ext parents
                       (0 == len(cmd.parents)) or

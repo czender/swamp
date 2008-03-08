@@ -331,7 +331,8 @@ class FakeExecutor:
 
 class NewFakeExecutor:
     def __init__(self):
-        self.running = []
+        self.runningClusters = {}
+        self.finishedClusters = set()
         self.token = 0
         self.slots = 2
         self.thread = threading.Thread(target=self._threadRun, args=())
@@ -341,7 +342,7 @@ class NewFakeExecutor:
         self.pCmdExec = 1 - math.exp(-self.tickSize/self.avgCmdTime)
         self._roots = []
         self._availFiles = set()
-        self._runningCmds = []
+        self._runningCmds = [] # (cmd, containingcluster)
         self.thread.start()
         self.idleTicks = 0
         pass
@@ -364,9 +365,9 @@ class NewFakeExecutor:
             
             # sleep 
             time.sleep(self.tickSize)
-            print "tick!"
-            self.idleTicks += 1
-            if self.idleTicks >= self.avgCmdTime*20:
+            print "tick[", self.idleTicks, "]",
+            self.idleTicks += self.tickSize
+            if self.idleTicks >= self.avgCmdTime*5:
                 print "death by boredom"
                 self.alive = False 
 
@@ -374,8 +375,8 @@ class NewFakeExecutor:
         dispatched = 0
         for x in range(slots):
             if self._roots:
-                cmd = self._roots.pop()
-                self._runningCmds.append(cmd)
+                cmdTuple = self._roots.pop()
+                self._runningCmds.append(cmdTuple)
                 dispatched += 1
             else:
                 break
@@ -387,26 +388,37 @@ class NewFakeExecutor:
         #print "running",self._runningCmds, "finishing",finishing
         map(self._graduateCmd, finishing)
 
-    def _graduateCmd(self, cmd):
+    def _graduateCmd(self, cmdTuple):
         # fix internal structures to be consistent:
-        self._runningCmds.remove(cmd)
+        self._runningCmds.remove(cmdTuple)
+        cmd = cmdTuple[0]
+        cluster = cmdTuple[1]
+        cluster.exec_finishedCmds.add(cmd)
         # add output files to availability
         self._availFiles.update(cmd.outputs)
         # put children on root queue if ready
-        print cmd
         for c in cmd.children:
-            print c.inputs, self._availFiles
+            if c not in cluster: # don't dispatch outside my cluster
+                continue
+            #print "inputs",c.inputs, "availfiles",self._availFiles
             ready = reduce(lambda x,y: x and y,
                            map(lambda f: f in self._availFiles, c.inputs),
                            True)
-            print "ready?", ready
+            #print "ready?", ready
             if ready:
-                self._roots.append(c)
+                self._roots.append((c,cluster))
         
         # report results
         self._touchUrl(cmd._callbackUrl[0])
+        if len(cluster.exec_finishedCmds) == len(cluster.cmds):
+            # call cluster graduation.
+            print "popping",cluster
+            func = self.runningClusters.pop(cluster)
+            func()
+            self.finishedClusters.add(cluster)
+            
         # do callback
-        self._idleTicks = 0
+        self.idleTicks = 0
         
     def _touchUrl(self, url):
         if isinstance(url, type(lambda : True)):
@@ -421,23 +433,25 @@ class NewFakeExecutor:
     
     def needsWork(self):
         # cache this.
-        return len(self.running) < self.slots
+        return len(self.runningClusters) < self.slots
         return (len(self.running) < self.slots) and not self.rpc.busy()
 
-    def dispatch(self, cluster, registerFunc):
-        # registerFunc is f(command, isLocal)
+    def dispatch(self, cluster, registerFunc, finishFunc):
+        # registerFunc is f(command, hook, isLocal)
         # registerFunc returns a tuple of success/fail
         # registerFunc should return funcs if local
         # and urls if remote.
+        # for local executor, can use null hook.
+        # finishFunc is a function to call when the cluster is finished.
         print "fakedispatching", cluster
         for cmd in cluster:
-            urls = registerFunc(cmd, True)
+            urls = registerFunc(cmd, lambda c,f: None, True)
             cmd._callbackUrl = urls
-        
-        self.running.append(cluster)
-        self._roots.extend(cluster.roots)
-        # attach ready queue to cluster, and populate.
-        # 
+        print "adding cluster",cluster
+        self.runningClusters[cluster] = finishFunc
+        cluster.exec_finishedCmds = set()
+        self._roots.extend(map(lambda c: (c,cluster), cluster.roots))
+
 
     def launch(self, cmd, locations = []):
         cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
@@ -890,16 +904,29 @@ def loadCmds(filename):
     import cPickle as pickle
     return pickle.load(open(filename))
 
+def makeLocalExec():
+    return LocalExecutor(NcoBinaryFinder(config),
+                             FileMapper("swamp%d"%os.getpid(),
+                                        "./s",
+                                        "./p",
+                                        "./b" ),
+                             2)
+
 def testDispatcher():
+    return testRun([makeFakeExecutor()])
+
+def testRun(execu):
     config = makeTestConfig()
-    e = [makeFakeExecutor()]
+    e = execu
     import swamp.scheduler as scheduler
     pd = scheduler.NewParallelDispatcher(config, e)
     pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
-    time.sleep(4)
+    print "Running, will force stop after 20 seconds"
+    time.sleep(25)
     
     e[0].forceJoin()
     print "cmds exec'd", pd.count
 
 def testLocalDispatch():
+    return testRun([makeLocalExec()])
     pass
