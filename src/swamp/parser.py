@@ -620,6 +620,7 @@ class Parser:
             if isinstance(command, types.InstanceType):
                 command.referenceLineNum = self._lineNum
                 command.original = self._original
+                command.expanded = self._line
         
             if not command:
                 log.debug("reject:"+ self._line)

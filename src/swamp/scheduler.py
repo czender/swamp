@@ -12,6 +12,7 @@
 
 # Python dependencies:
 import cPickle as pickle
+import itertools
 import md5
 import struct
 import time
@@ -19,6 +20,7 @@ import time
 # SWAMP imports
 #from swamp.execution import NewParallelDispatcher
 from swamp.partitioner import PlainPartitioner
+from swamp import log
 
 class Scheduler:
     def __init__(self, config, graduateHook=lambda x: None):
@@ -113,15 +115,16 @@ class NewParallelDispatcher:
     def __init__(self, config, executorList):
         self.config = config
         self.executors = executorList
-        #self.finished = {}
+        self.finished = set()
         self.okayToReap = True
         # not okay to declare file death until everything is parsed.
         self.execLocation = {} # logicalout -> executor
         #self.sleepTime = 0.100 # originally set at 0.200
         #self.running = {} # (e,etoken) -> cmd
-        #self.execPollRR = None
-        #self.execDispatchRR = None
         #self.result = None
+        self.readyClusters = set() # unordered. prefer fast member testing
+        self.runningClusters = set() # unordered. prefer fast member testing
+        self.finishedClusters = set()
         self.count = 0
         pass
 
@@ -131,7 +134,8 @@ class NewParallelDispatcher:
         while (unIdleExecutors < numExecutors) and self.rootClusters:
             e = self.polledExecutor.next()
             if e.needsWork():
-                e.dispatch(self.rootClusters.next(), self._registerCallback)
+                c = self.rootClusters.next()
+                self._dispatchCluster(c, e)
                 unIdleExecutors = 0
             else:
                 unIdleExecutors += 1
@@ -151,28 +155,9 @@ class NewParallelDispatcher:
         # asynchronously-initiated callbacks.
 
         return    
-    def dispatchAll(self, cmdList, hook=lambda f:None):
-        # Break things into clusters:
-        p = PlainPartitioner(cmdList)
-        self.clusters = p.result() # reference copy (is this needed?)
-        self.remainingClusters = map(lambda c: c[:], self.clusters) 
-        print "partitions=",self.clusters
-
-        readyclusters = self.remainingClusters[0]
-        # The lower levels (i.e. [1], [2], etc.) get executed as their
-        # parents complete.
-        
-        readyclusters.reverse()
-        # Then put ready clusters in queues for each executor.
-        for e in self.executors:
-            if not readyclusters:
-                break
-            e.enqueue(readyclusters.pop())
-        # Now make sure the executors are busy with work.
-        self.keepBusy()
 
 
-    def _registerCallback(self, function, isLocal):
+    def _registerCallback(self, cmd, gradHook, isLocal):
         """Used by mgmt "threads" that dispatch clusters/cmds remotely.
         Returns the callback url.
         1. Build data struct determining how to process result.
@@ -187,11 +172,11 @@ class NewParallelDispatcher:
         operation and detect faults.  
         """
         if isLocal:
-            return (lambda : self._graduate(cmd, False),
-                    lambda : self._graduate(cmd, True))
+            return (lambda : self._graduate(cmd, gradHook, False),
+                    lambda : self._graduate(cmd, gradHook, True))
         else:
             print "Uh oh, I don't know how to do this yet"
-            self.listener.addCallback(function)
+            self.listener.addCallback(gradHook)
 
             return ()
 
@@ -213,10 +198,47 @@ class NewParallelDispatcher:
             sleep(0.3)
         return
     
-        
+    def graduateCluster(self, cluster, executor):
+        # Discard from the running list
+        self.runningClusters.discard(cluster)
+        # Put cluster on a 'finished clusters' list
+        self.finishedClusters.add(cluster)
+        # Now update a ready clusters list-- we prefer dispatching
+        # from this one over the root clusters list, thus favoring
+        # depth-first rather than breadth first.
+        newReady = []
+        cands = filter(lambda c: (c not in self.readyClusters)
+                       and (c not in self.runningClusters), cluster.children)
+        print "I graduated a cluster! ", cluster
+        newReady = filter(lambda c: c.ready(self.finished), cands)
+        # If we made a cluster ready, dispatch it.
+        if len(newReady) > 0:
+            self._dispatchCluster(newReady[0], executor)
+            # Then, put the remaining clusters on the ready list
+            self.readyClusters.update(newReady[1:])
 
-    def _graduate(self, cmd, fail):
-        print "graduate",cmd.cmd, cmd.argList
+        elif self.readyClusters:
+            # or dispatch from already-ready
+            c = self.readyClusters.pop()
+            self._dispatchCluster(c, executor)
+        elif self.rootClusters:
+            c = self.rootClusters.next()
+            self._dispatchCluster(c, executor)
+            
+        pass
+
+    def _dispatchCluster(self, cluster, executor):
+        self.runningClusters.add(cluster)
+        executor.dispatch(cluster, self._registerCallback,
+                          lambda : self.graduateCluster(cluster, executor))
+
+        
+    def _graduate(self, cmd, gradHook, fail):
+        #The dispatcher isn't really in charge of dependency
+        #checking, so it doesn't really need to know when things
+        #are finished.
+        gradHook(cmd,fail) # Service the hook function first (better later?)
+        print "graduate",cmd.cmd, cmd.argList, "total=",self.count
         self.count += 1
         if fail:
             print "we failed"
@@ -225,5 +247,61 @@ class NewParallelDispatcher:
         print "succeeded"
 
         pass
+    
+        if fail:
+            origline = ' '.join([cmd.cmd] + map(lambda t: ' '.join(t), cmd.argList) + cmd.leftover)
+            s = "Bad return code %s from cmdline %s %d outs=%s" % (
+                code, origline, cmd.referenceLineNum, str(cmd.outputs))
+            log.error(s)
+            # For nicer handling, we should find the original command line
+            # and pass it back as the failing line (+ line number)
+            # It would be nice to trap the stderr for that command, but that
+            # can be done later, since it's a different set of pipes
+            # to connect.
 
+            self.result = "Error at line %d : %s" %(cmd.referenceLineNum,
+                                                    origline)
+            return
+            #raise StandardError(s)
+        else:
+            # figure out which one finished, and graduate it.
+            #self.finished[cmd] = code
+            log.debug("graduating %s %d" %(cmd.cmd,
+                                           cmd.referenceLineNum))
+            print "graduating %s %d %s" %(cmd.cmd,
+                                       cmd.referenceLineNum,
+                                       id(cmd))
+            self.finished.add(cmd)
+            #print "New Finished set:", len(self.finished),"\n","\n".join(map(lambda x:x.original,self.finished))
+            # Are any clusters made ready?
+            # Check this cluster's descendents.  For each of them,
+            # see if the all their parent cmds are finished.
+            # For now, don't dispatch a cluster until all its parents
+            # are ready.
+
+            # If it's a leaf cmd, then publish its results.
+            # Apply reaper logic: should be same as before.
+            
+            return
+            #######
+            # update the readylist
+            newready = self.findMadeReady(cmd)
+            map(lambda x: heappush(self.ready,x), newready)
+            # delete consumed files.
+            if self.okayToReap:
+                self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
+                                         cmd.inputsWithParents))
+            e = token[0] # token is (executor, etoken)
+            map(lambda o: appendList(self.execLocation, o, e), cmd.outputs)
+            execs = self.execLocation[cmd.outputs[0]]
+
+            #self._publishFiles(filter(lambda o: self.isOutput(o),
+            #                         cmd.outputs))
+            #execs[0].actual[cmd.outputs[0]] # FIXME: can I delete this?
+            # hardcoded for now.
+
+            # call this to migrate files to final resting places.
+            # Use a generic hook passed from above.
+            hook(cmd)
+            pass
 
