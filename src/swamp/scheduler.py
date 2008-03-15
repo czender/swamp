@@ -22,6 +22,19 @@ import time
 from swamp.partitioner import PlainPartitioner
 from swamp import log
 
+#local module helpers:
+def appendList(aDict, key, val):
+    l = aDict.get(key,[])
+    l.append(val)
+    aDict[key] = l
+
+def appendListMulKey(aDict, keys, val):
+    for k in keys:
+        l = aDict.get(k,[])
+        l.append(val)
+        aDict[k] = l
+
+
 class Scheduler:
     def __init__(self, config, graduateHook=lambda x: None):
         self.config = config
@@ -157,7 +170,7 @@ class NewParallelDispatcher:
         return    
 
 
-    def _registerCallback(self, cmd, gradHook, isLocal):
+    def _registerCallback(self, cmd, gradHook, executor, isLocal):
         """Used by mgmt "threads" that dispatch clusters/cmds remotely.
         Returns the callback url.
         1. Build data struct determining how to process result.
@@ -172,8 +185,8 @@ class NewParallelDispatcher:
         operation and detect faults.  
         """
         if isLocal:
-            return (lambda : self._graduate(cmd, gradHook, False),
-                    lambda : self._graduate(cmd, gradHook, True))
+            return (lambda : self._graduate(cmd, gradHook, executor, False),
+                    lambda : self._graduate(cmd, gradHook, executor, True))
         else:
             print "Uh oh, I don't know how to do this yet"
             self.listener.addCallback(gradHook)
@@ -228,16 +241,25 @@ class NewParallelDispatcher:
         pass
 
     def _dispatchCluster(self, cluster, executor):
+        # need to put code here to find input files and pass their locs forward.
+        inputs = set()
+        map(lambda i: inputs.update(i),
+            map(lambda c: c.inputsWithParents, cluster.roots))
+        inputLocs = map(lambda f:(f, self.fileLoc(f)), inputs)
+        print "cluster parents are",inputs
         self.runningClusters.add(cluster)
         executor.dispatch(cluster, self._registerCallback,
                           lambda : self.graduateCluster(cluster, executor))
 
         
-    def _graduate(self, cmd, gradHook, fail):
+    def _graduate(self, cmd, gradHook, executor, fail):
         #The dispatcher isn't really in charge of dependency
         #checking, so it doesn't really need to know when things
         #are finished.
         gradHook(cmd,fail) # Service the hook function first (better later?)
+        # who's the hook?
+        map(lambda o: appendList(self.execLocation, o, executor), cmd.outputs)
+
         print "graduate",cmd.cmd, cmd.argList, "total=",self.count
         self.count += 1
         if fail:
@@ -305,3 +327,31 @@ class NewParallelDispatcher:
             hook(cmd)
             pass
 
+    def fileLoc(self, file):
+        """ return url of logical output file"""
+        execs = self.execLocation[file]
+        if len(execs) > 0:
+            try:
+                return execs[0].actual[file] # return the first one
+            except KeyError:
+                i = 0
+                emap = {}
+                msg = ["#Key error for %s" % (file),
+                       "badkey = '%s'" %(file)]
+                for e in self.executors:
+                    nicename = "e%dactual" % i
+                    emap[e] = nicename
+                    msg.append("%s = %s" %(nicename, str(e.actual)))
+                    i += 1
+                msg.append("#Key %s maps to %s" %(file,
+                                                 map(lambda e: emap[e],
+                                                     self.execLocation[file])))
+                locstr = str(self.execLocation)
+                for (k,v) in emap.items():
+                    locstr = locstr.replace(str(k),v)
+                msg.append("eLoc = " + locstr) 
+                open("mykeyerror.py","w").write("\n".join(msg))
+                log.error("writing debug file to mykeyerror.py")
+                execs[0].actual[file] # re-raise error.
+        else:
+            return None
