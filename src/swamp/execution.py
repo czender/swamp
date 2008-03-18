@@ -331,11 +331,33 @@ class FakeExecutor:
 
 # ============================================================
 
-class NewFakeExecutor:
-    def __init__(self):
+
+class NewLocalExecutor:
+    """
+    An executor in the "new style" executes clusters rather than
+    single commands.
+
+    A fake executor version is bundled here for testing the
+    clustering and the upper-level dispatcher.
+    The only difference between local and fake-local execution
+    is skipping the actual execution and just modeling the
+    results instead."""
+    
+    def __init__(self, mode='fake'):
+        """set mode to 'fake' to provide a faking executor,
+        or 'local' to use a normal local execution engine"""
         self.runningClusters = {}
         self.finishedClusters = set()
         self.token = 0
+        self.execMode = mode
+        if mode == 'fake':
+            self._initFakeMode()
+        else:
+            self._initLocalMode()
+            
+        pass
+
+    def _initFakeMode(self):
         self.slots = 2
         self.actual = {}
         self.thread = threading.Thread(target=self._threadRun, args=())
@@ -348,10 +370,83 @@ class NewFakeExecutor:
         self._runningCmds = [] # (cmd, containingcluster)
         self.thread.start()
         self.idleTicks = 0
+
+    def _initLocalMode(self):
+        self.cmdQueue = Queue.Queue()
+        pass
+    
+    def _threadRunLocal(self):
+        # the non-fake version doesn't really have to do anything but
+        # wait on the pids of its spawned processes.  And when it's
+        # not waiting, maybe it can wait on a condition or something.
+
+        # The concept of being 'alive' should exist in both real and
+        # fake modes.
+
+        # Execution uses a thread pool, where threads exist solely to
+        # wakeup when children processes terminate. A previous
+        # architecture used async spawning, but had to resort to
+        # periodic waitpid calls. 
+        while self.alive:
+            # dispatch as we are able.
+            # shove everything we can on the queue.
+            self._queueAllReady()
+            # Is there a real reason for doing this more
+            # than once? What if the original queuing action puts
+            # things on the queue directly?
+            time.sleep(2) 
+
         pass
 
+    def _startPool(self, num):
+         self._pool = map(lambda n:
+                          threading.Thread(target=self._process),
+                          range(num))
+         map(lambda t: t.start(), self._pool)
+
+    def _process(self):
+        """Main loop for the pool worker"""
+        while self.alive:
+            ctuple = self.cmdQueue.get()
+            if not self.alive: # still alive?
+                break
+            print "dispatching cmdtuple",ctuple
+            code = self._runCommand(cmd)
+            #FIXME: check for error.
+            self._graduateCmd(ctuple)
+
+        pass
+    
+    def _killPool(self):
+        # turn off alive, and poison the queue
+        self.alive = False
+        map(lambda t: self.cmdQueue.put(None), self._pool)
+   
+    def _runCommand(self, cmd):
+        print "asked to dispatch ", cmd
+        # use errno-513-resistant method of execution.
+        exitcode = None
+        while exitcode is None:
+            try:
+                exitcode = os.spawnv(os.P_WAIT, binPath, arglist)
+            except OSError, e:
+                if not (e.errno == 513):
+                    raise
+                pass #retry on ERESTARTNOINTR
+        
+        # consider:
+        # exitcode=subprocess.call(executable=binPath,
+        # args=arglist, stdout=some filehandle with output,
+        # stderrr= samefilehandle)
+        return exitcode
 
     def _threadRun(self):
+        if self.execMode == 'fake':
+            self._threadRunFake()
+        else:
+            self._threadRunLocal()
+        
+    def _threadRunFake(self):
         open("/dev/stderr","w").write( "start fake")
         while self.alive:
             # while alive, we pretend to finish commands.
@@ -384,7 +479,10 @@ class NewFakeExecutor:
             else:
                 break
         return dispatched
-            
+    def _queueAllReady(self):
+        while self._roots:
+            self.cmdQueue.put(self._roots.pop())
+        
             
     def _fakeFinishExecution(self):
         finishing = filter(lambda x: random.random() < self.pCmdExec, self._runningCmds)
@@ -471,177 +569,8 @@ class NewFakeExecutor:
 
     def forceJoin(self):
         self.alive = False
-        if self._runningCmds:
-            # If thread is running, let it finish.
-            # Perhaps reduce its timers to make it finish faster
-            # otherwise, just terminate.
-            self.thread.join()
-            
-    pass
-
-# ============================================================
-class NewLocalExecutor:
-    def __init__(self):
-        self.runningClusters = {}
-        self.finishedClusters = set()
-        self.token = 0
-        self.slots = 2
-        self.actual = {}
-        self.thread = threading.Thread(target=self._threadRun, args=())
-        self.alive = True
-        self.avgCmdTime = 0.5# avg exec time per command
-        self.tickSize = 1.0/(self.avgCmdTime*10) # ten ticks per mean time
-        self.pCmdExec = 1 - math.exp(-self.tickSize/self.avgCmdTime)
-        self._roots = []
-        self._availFiles = set()
-        self._runningCmds = [] # (cmd, containingcluster)
-        self.thread.start()
-        self.idleTicks = 0
-        pass
-
-    def _launch(self, cmd, locations=[]):
-        self.tokenLock.acquire()
-        self.token += 1
-        token = self.token
-        self.tokenLock.release()
-        # make sure our inputs are ready
-        missing = filter(lambda f: not self.filemap.existsForRead(f),
-                         cmd.inputs)
-        fetched = self._fetchLogicals(missing, cmd.inputSrcs)
-        self.rFetchedFiles[token] = fetched
-        # doublecheck that remaining logicals are available.
-        fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
-        self.rFetchedFiles[token] += fetched
-        
-        cmdLine = cmd.makeCommandLine(self.filemap.mapReadFile,
-                                      self.filemap.mapWriteFile)
-        log.debug("%d-exec-> %s" % (token," ".join(cmdLine)))
-        # make sure there's room to write the output
-        #log.debug("clearing to make room for writing (should be using concretefiles")
-        self.clearFiles(map(lambda t: t[1], cmd.actualOutputs))
-        pid = self.resistErrno513(os.P_NOWAIT,
-                                  self.binaryFinder(cmd), cmdLine)
-        log.debug("child pid: "+str(pid))
-
-        self.running[token] = pid
-        log.debug("LocalExec added token %d" %token)
-        self.cmds[token] = cmd
-        return token
-
-    def _threadRun(self):
-        open("/dev/stderr","w").write( "start fake")
-        while self.alive:
-            # while alive, we pretend to finish commands.
-            # "finish"
-            # given cmdrate represents probabalistic rate, so for each "running" cmd, decide whether or not it has finished, and then process its finish.
-            self._fakeFinishExecution()
-            # "dispatch":
-            # if we have empty slots, then run a ready cmd
-            # pull a cmd from a cluster and put it in the running list.
-            # sleep until next cycle.
-            emptyslots = self.slots - len(self._runningCmds)
-            if emptyslots > 0:
-                self._dispatchSlots(emptyslots)
-            
-            # sleep 
-            time.sleep(self.tickSize)
-            print "tick[", self.idleTicks, "]",
-            self.idleTicks += self.tickSize
-            if self.idleTicks >= self.avgCmdTime*5:
-                print "death by boredom"
-                self.alive = False 
-
-    def _dispatchSlots(self, slots):
-        dispatched = 0
-        for x in range(slots):
-            if self._roots:
-                cmdTuple = self._roots.pop()
-                self._runningCmds.append(cmdTuple)
-                dispatched += 1
-            else:
-                break
-        return dispatched
-            
-            
-    def _fakeFinishExecution(self):
-        finishing = filter(lambda x: random.random() < self.pCmdExec, self._runningCmds)
-        #print "running",self._runningCmds, "finishing",finishing
-        map(self._graduateCmd, finishing)
-
-    def _graduateCmd(self, cmdTuple):
-        # fix internal structures to be consistent:
-        self._runningCmds.remove(cmdTuple)
-        cmd = cmdTuple[0]
-        cluster = cmdTuple[1]
-        cluster.exec_finishedCmds.add(cmd)
-        # add output files to availability
-        self._availFiles.update(cmd.outputs)
-        # put children on root queue if ready
-        for c in cmd.children:
-            if c not in cluster: # don't dispatch outside my cluster
-                continue
-            #print "inputs",c.inputs, "availfiles",self._availFiles
-            ready = reduce(lambda x,y: x and y,
-                           map(lambda f: f in self._availFiles, c.inputs),
-                           True)
-            #print "ready?", ready
-            if ready:
-                self._roots.append((c,cluster))
-        
-        # report results
-        self._touchUrl(cmd._callbackUrl[0])
-        if len(cluster.exec_finishedCmds) == len(cluster.cmds):
-            # call cluster graduation.
-            print "popping",cluster
-            func = self.runningClusters.pop(cluster)
-            func()
-            self.finishedClusters.add(cluster)
-            
-        # do callback
-        self.idleTicks = 0
-        
-    def _touchUrl(self, url):
-        if isinstance(url, type(lambda : True)):
-            print "calling!"
-            return url()
-        try:
-            f = urllib2.urlopen(url)
-            f.read() # read result, discard for now
-        except:
-            return False
-        return True
-    
-    def needsWork(self):
-        # cache this.
-        return len(self.runningClusters) < self.slots
-        return (len(self.running) < self.slots) and not self.rpc.busy()
-
-    def dispatch(self, cluster, registerFunc, finishFunc):
-        # registerFunc is f(command, hook, isLocal)
-        # registerFunc returns a tuple of success/fail
-        # registerFunc should return funcs if local
-        # and urls if remote.
-        # for local executor, can use null hook.
-        # finishFunc is a function to call when the cluster is finished.
-        print "fakedispatching", cluster
-        for cmd in cluster:
-            urls = registerFunc(cmd, lambda c,f: None, True)
-            cmd._callbackUrl = urls
-        print "adding cluster",cluster
-        self.runningClusters[cluster] = finishFunc
-        cluster.exec_finishedCmds = set()
-        self._roots.extend(map(lambda c: (c,cluster), cluster.roots))
-
-
-    def launch(self, cmd, locations = []):
-        cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
-        print "fakeran",cmdLine
-        self.token += 1
-        self.running.append(self.fakeToken)
-        return self.fakeToken
-
-    def forceJoin(self):
-        self.alive = False
+        if self.execMode != 'fake':
+            self._killPool()
         if self._runningCmds:
             # If thread is running, let it finish.
             # Perhaps reduce its timers to make it finish faster
@@ -1078,19 +1007,27 @@ def makeTestConfig():
     pass
 
 def makeFakeExecutor():
-    return NewFakeExecutor()
+    return NewLocalExecutor(mode='fake')
 
 def loadCmds(filename):
     import cPickle as pickle
     return pickle.load(open(filename))
 
 def makeLocalExec(config):
-    return LocalExecutor(NcoBinaryFinder(config),
+    return NewLocalExecutor(mode='local')
+    return NewLocalExecutor(NcoBinaryFinder(config),
                              FileMapper("swamp%d"%os.getpid(),
                                         "./s",
                                         "./p",
                                         "./b" ),
                              2)
+    
+#     return LocalExecutor(NcoBinaryFinder(config),
+#                              FileMapper("swamp%d"%os.getpid(),
+#                                         "./s",
+#                                         "./p",
+#                                         "./b" ),
+#                              2)
 
 def testDispatcher():
     config = makeTestConfig()
