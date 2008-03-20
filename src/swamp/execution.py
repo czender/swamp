@@ -9,14 +9,16 @@ execution - contains code related to executing commands
 # This file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
-import itertools
-import os
-import time
-import threading
 from heapq import * # for minheap implementation
+import itertools
 import inspect # for debugging
 import math
+import os
+import Queue
 import random
+import time
+import threading
+
 import urllib2
 
 # for working around python bug http://bugs.python.org/issue1628205
@@ -350,29 +352,34 @@ class NewLocalExecutor:
         self.finishedClusters = set()
         self.token = 0
         self.execMode = mode
+        self.alive = True
+        self._runningCmds = [] # (cmd, containingcluster)
+        self._roots = []
         if mode == 'fake':
             self._initFakeMode()
         else:
             self._initLocalMode()
-            
+        self.thread = threading.Thread(target=self._threadRun, args=())
+        self.thread.start()
         pass
 
     def _initFakeMode(self):
+        self._launch = self._launchFake
+        self._threadRun = self._threadRunFake
         self.slots = 2
         self.actual = {}
-        self.thread = threading.Thread(target=self._threadRun, args=())
-        self.alive = True
         self.avgCmdTime = 0.5# avg exec time per command
         self.tickSize = 1.0/(self.avgCmdTime*10) # ten ticks per mean time
         self.pCmdExec = 1 - math.exp(-self.tickSize/self.avgCmdTime)
-        self._roots = []
         self._availFiles = set()
-        self._runningCmds = [] # (cmd, containingcluster)
-        self.thread.start()
         self.idleTicks = 0
-
+        
     def _initLocalMode(self):
+        self._launch = self._launchLocal
+        self._threadRun = self._threadRunLocal
         self.cmdQueue = Queue.Queue()
+        self.slots = 2 # FIXME: pull from config
+        self._startPool(self.slots)
         pass
     
     def _threadRunLocal(self):
@@ -387,9 +394,11 @@ class NewLocalExecutor:
         # wakeup when children processes terminate. A previous
         # architecture used async spawning, but had to resort to
         # periodic waitpid calls. 
+
         while self.alive:
             # dispatch as we are able.
             # shove everything we can on the queue.
+            print "mgmt queuing ready"
             self._queueAllReady()
             # Is there a real reason for doing this more
             # than once? What if the original queuing action puts
@@ -406,12 +415,14 @@ class NewLocalExecutor:
 
     def _process(self):
         """Main loop for the pool worker"""
+        print "thread birth"
         while self.alive:
+            print "thread begin loop"
             ctuple = self.cmdQueue.get()
             if not self.alive: # still alive?
                 break
             print "dispatching cmdtuple",ctuple
-            code = self._runCommand(cmd)
+            code = self._launch(cmd)
             #FIXME: check for error.
             self._graduateCmd(ctuple)
 
@@ -422,7 +433,7 @@ class NewLocalExecutor:
         self.alive = False
         map(lambda t: self.cmdQueue.put(None), self._pool)
    
-    def _runCommand(self, cmd):
+    def _runCommand(self, binPath, arglist):
         print "asked to dispatch ", cmd
         # use errno-513-resistant method of execution.
         exitcode = None
@@ -441,10 +452,10 @@ class NewLocalExecutor:
         return exitcode
 
     def _threadRun(self):
-        if self.execMode == 'fake':
-            self._threadRunFake()
-        else:
-            self._threadRunLocal()
+        "Placeholder: runtime alias of _threadRunFake or _threadRunLocal"
+        raise "---ERROR--- unmapped call to threadRun"
+
+
         
     def _threadRunFake(self):
         open("/dev/stderr","w").write( "start fake")
@@ -479,6 +490,7 @@ class NewLocalExecutor:
             else:
                 break
         return dispatched
+
     def _queueAllReady(self):
         while self._roots:
             self.cmdQueue.put(self._roots.pop())
@@ -559,13 +571,32 @@ class NewLocalExecutor:
         cluster.exec_finishedCmds = set()
         self._roots.extend(map(lambda c: (c,cluster), cluster.roots))
 
+    def _launch(self, cmd, locations=[]):
+        "Placeholder: runtime alias of launchFake or launchLocal"
+        raise "---ERROR--- unmapped call to launch"
 
-    def launch(self, cmd, locations = []):
+        
+    def _launchFake(self, cmd, locations = []):
         cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
         print "fakeran",cmdLine
         self.token += 1
         self.running.append(self.fakeToken)
         return self.fakeToken
+
+    def _launchLocal(self, cmd, locations=[]):
+        # make sure our inputs are ready
+        missing = filter(lambda f: not self.filemap.existsForRead(f),
+                         cmd.inputs)
+        if locations:
+            cmd.inputSrcs = locations
+        fetched = self._fetchLogicals(missing, cmd.inputSrcs)
+        cmd.rFetchedFiles = fetched
+        fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
+        cmdLine = cmd.makeCommandLine(self.filemap.mapReadFile,
+                                      self.filemap.mapWriteFile)
+        #Make room for outputs (shouldn't be needed)
+        self.clearFiles(map(lambda t: t[1], cmd.actualOutputs))
+        
 
     def forceJoin(self):
         self.alive = False
@@ -1039,8 +1070,10 @@ def testRun(config, execu):
     pd = scheduler.NewParallelDispatcher(config, e)
     pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
     print "Running, will force stop after 20 seconds"
-    time.sleep(25)
-    
+    try:
+        time.sleep(25)
+    except:
+        pass
     e[0].forceJoin()
     print "cmds exec'd", pd.count
 
