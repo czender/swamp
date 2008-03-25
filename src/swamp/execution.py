@@ -345,16 +345,18 @@ class NewLocalExecutor:
     is skipping the actual execution and just modeling the
     results instead."""
     
-    def __init__(self, mode='fake'):
+    def __init__(self, mode='fake', binaryFinder=None, filemap=None, slots=1):
         """set mode to 'fake' to provide a faking executor,
         or 'local' to use a normal local execution engine"""
         self.runningClusters = {}
         self.finishedClusters = set()
-        self.token = 0
+        #self.token = 0
         self.execMode = mode
         self.alive = True
         self._runningCmds = [] # (cmd, containingcluster)
         self._roots = []
+        self.binaryFinder = binaryFinder
+        self.filemap = filemap
         if mode == 'fake':
             self._initFakeMode()
         else:
@@ -422,6 +424,7 @@ class NewLocalExecutor:
             if not self.alive: # still alive?
                 break
             print "dispatching cmdtuple",ctuple
+            (cmd,clus) = ctuple
             code = self._launch(cmd)
             #FIXME: check for error.
             self._graduateCmd(ctuple)
@@ -485,6 +488,8 @@ class NewLocalExecutor:
         for x in range(slots):
             if self._roots:
                 cmdTuple = self._roots.pop()
+                (cmd, clus) = cmdTuple
+                self._launch(cmd)
                 self._runningCmds.append(cmdTuple)
                 dispatched += 1
             else:
@@ -499,11 +504,11 @@ class NewLocalExecutor:
     def _fakeFinishExecution(self):
         finishing = filter(lambda x: random.random() < self.pCmdExec, self._runningCmds)
         #print "running",self._runningCmds, "finishing",finishing
+        map(self._runningCmds.remove, finishing)
         map(self._graduateCmd, finishing)
 
     def _graduateCmd(self, cmdTuple):
         # fix internal structures to be consistent:
-        self._runningCmds.remove(cmdTuple)
         cmd = cmdTuple[0]
         cluster = cmdTuple[1]
         cluster.exec_finishedCmds.add(cmd)
@@ -577,11 +582,13 @@ class NewLocalExecutor:
 
         
     def _launchFake(self, cmd, locations = []):
+        print "fakelaunch tuple",cmd
         cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
         print "fakeran",cmdLine
-        self.token += 1
-        self.running.append(self.fakeToken)
-        return self.fakeToken
+        #self.token += 1
+        #self.running.append(self.fakeToken)
+        #return self.fakeToken
+        pass
 
     def _launchLocal(self, cmd, locations=[]):
         # make sure our inputs are ready
@@ -589,14 +596,49 @@ class NewLocalExecutor:
                          cmd.inputs)
         if locations:
             cmd.inputSrcs = locations
-        fetched = self._fetchLogicals(missing, cmd.inputSrcs)
-        cmd.rFetchedFiles = fetched
-        fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
+        if missing:
+            fetched = self._fetchLogicals(missing, cmd.inputSrcs)
+            cmd.rFetchedFiles = fetched
+            fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
         cmdLine = cmd.makeCommandLine(self.filemap.mapReadFile,
                                       self.filemap.mapWriteFile)
         #Make room for outputs (shouldn't be needed)
-        self.clearFiles(map(lambda t: t[1], cmd.actualOutputs))
+        self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
         
+    def _fetchLogicals(self, logicals, srcs):
+        fetched = []
+        if len(logicals) == 0:
+            return []
+        log.info("need fetch for %s from %s" %(str(logicals),str(srcs)))
+        
+        d = dict(srcs)
+        for lf in logicals:
+            self.fetchLock.acquire()
+            if self.filemap.existsForRead(lf):
+                self.fetchLock.release()
+                log.debug("satisfied by other thread")
+                continue
+            self.fetchFile = lf
+            #phy = self.filemap.mapBulkFile(lf) # 
+            phy = self.filemap.mapWriteFile(lf)
+            # FIXME NOW: d[lf] not always valid!!!
+            log.debug("fetching %s from %s" % (lf, d[lf]))
+            self._fetchPhysical(phy, d[lf])
+            fetched.append((lf, phy))
+            self.fetchFile = None
+            self.fetchLock.release()
+        return fetched
+
+    def _clearFiles(self, filelist):
+        for f in filelist:
+            if os.access(f, os.F_OK):
+                if os.access(f, os.W_OK):
+                    os.remove(f)
+                else:
+                    raise StandardError("Tried to unlink read-only %s"
+                                        % (fname))
+            pass
+        pass
 
     def forceJoin(self):
         self.alive = False
@@ -1045,13 +1087,12 @@ def loadCmds(filename):
     return pickle.load(open(filename))
 
 def makeLocalExec(config):
-    return NewLocalExecutor(mode='local')
-    return NewLocalExecutor(NcoBinaryFinder(config),
-                             FileMapper("swamp%d"%os.getpid(),
-                                        "./s",
-                                        "./p",
-                                        "./b" ),
-                             2)
+    return NewLocalExecutor(mode='local', binaryFinder=NcoBinaryFinder(config),
+                            filemap=FileMapper("swamp%d"%os.getpid(),
+                                               "./s",
+                                               "./p",
+                                               "./b" ),
+                            slots=2)
     
 #     return LocalExecutor(NcoBinaryFinder(config),
 #                              FileMapper("swamp%d"%os.getpid(),
