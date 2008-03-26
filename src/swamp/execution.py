@@ -357,6 +357,8 @@ class NewLocalExecutor:
         self._roots = []
         self.binaryFinder = binaryFinder
         self.filemap = filemap
+        self.actual = {}
+
         if mode == 'fake':
             self._initFakeMode()
         else:
@@ -369,12 +371,12 @@ class NewLocalExecutor:
         self._launch = self._launchFake
         self._threadRun = self._threadRunFake
         self.slots = 2
-        self.actual = {}
         self.avgCmdTime = 0.5# avg exec time per command
         self.tickSize = 1.0/(self.avgCmdTime*10) # ten ticks per mean time
         self.pCmdExec = 1 - math.exp(-self.tickSize/self.avgCmdTime)
         self._availFiles = set()
         self.idleTicks = 0
+        self._enqueue = lambda cmd,clus: self._roots.append((cmd,clus))
         
     def _initLocalMode(self):
         self._launch = self._launchLocal
@@ -382,6 +384,11 @@ class NewLocalExecutor:
         self.cmdQueue = Queue.Queue()
         self.slots = 2 # FIXME: pull from config
         self._startPool(self.slots)
+        self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
+        def eee(c,cc):
+            print "enqueue", id(c)
+            self.cmdQueue.put((c,cc))
+        self._enqueue = eee
         pass
     
     def _threadRunLocal(self):
@@ -400,12 +407,13 @@ class NewLocalExecutor:
         while self.alive:
             # dispatch as we are able.
             # shove everything we can on the queue.
-            print "mgmt queuing ready"
+            print "mgmt queuing ready", len(self._roots)
             self._queueAllReady()
             # Is there a real reason for doing this more
             # than once? What if the original queuing action puts
             # things on the queue directly?
-            time.sleep(2) 
+            time.sleep(2)
+            
 
         pass
 
@@ -419,8 +427,8 @@ class NewLocalExecutor:
         """Main loop for the pool worker"""
         print "thread birth"
         while self.alive:
-            print "thread begin loop"
             ctuple = self.cmdQueue.get()
+            if ctuple: print "thread pulled",id(ctuple[0])
             if not self.alive: # still alive?
                 break
             print "dispatching cmdtuple",ctuple
@@ -498,25 +506,36 @@ class NewLocalExecutor:
 
     def _queueAllReady(self):
         while self._roots:
-            self.cmdQueue.put(self._roots.pop())
-        
+            print "kickstart"
+            self._enqueue(self._roots.pop())
+
             
     def _fakeFinishExecution(self):
         finishing = filter(lambda x: random.random() < self.pCmdExec, self._runningCmds)
-        #print "running",self._runningCmds, "finishing",finishing
-        map(self._runningCmds.remove, finishing)
-        map(self._graduateCmd, finishing)
+        map(self._fakeGraduate, finishing)
 
+
+    def _fakeGraduate(self, cmdTuple):
+        # mark 'finished' to free up slots
+        self._runningCmds.remove(cmdTuple)
+        (cmd, cluster) = cmdTuple
+        # Fabricate actual outputs (phys filename, size)
+        cmd.actualOutputs = map(lambda x: (x, "bogus_"+x, 1000),
+                                cmd.outputs)
+        self._graduateCmd(cmdTuple)
+        self.idleTicks = 0
+        pass
+    def _newGraduate(self, cmdTuple):
+        
+        pass
+        
     def _graduateCmd(self, cmdTuple):
         # fix internal structures to be consistent:
         cmd = cmdTuple[0]
         cluster = cmdTuple[1]
+        # Update cluster status
         cluster.exec_finishedCmds.add(cmd)
-        # add output files to availability
-        self._availFiles.update(cmd.outputs)
-        # make up actual outputs
-        cmd.actualOutputs = map(lambda x: (x, "bogus_"+x, 1000),
-                                cmd.outputs)
+
         for x in cmd.actualOutputs:
             self.actual[x[0]] = x[1]
 
@@ -526,11 +545,12 @@ class NewLocalExecutor:
                 continue
             #print "inputs",c.inputs, "availfiles",self._availFiles
             ready = reduce(lambda x,y: x and y,
-                           map(lambda f: f in self._availFiles, c.inputs),
+                           map(lambda f: f in self.actual, c.inputs),
                            True)
             #print "ready?", ready
             if ready:
-                self._roots.append((c,cluster))
+                print "parent",id(cmd),"enqueuing",id(c)
+                self._enqueue(c,cluster)
         
         # report results
         self._touchUrl(cmd._callbackUrl[0])
@@ -541,8 +561,6 @@ class NewLocalExecutor:
             func()
             self.finishedClusters.add(cluster)
             
-        # do callback
-        self.idleTicks = 0
         
     def _touchUrl(self, url):
         if isinstance(url, type(lambda : True)):
@@ -558,7 +576,6 @@ class NewLocalExecutor:
     def needsWork(self):
         # cache this.
         return len(self.runningClusters) < self.slots
-        return (len(self.running) < self.slots) and not self.rpc.busy()
 
     def dispatch(self, cluster, registerFunc, finishFunc):
         # registerFunc is f(command, hook, isLocal)
@@ -567,14 +584,14 @@ class NewLocalExecutor:
         # and urls if remote.
         # for local executor, can use null hook.
         # finishFunc is a function to call when the cluster is finished.
-        print "fakedispatching", cluster
+        print "dispatching", cluster
         for cmd in cluster:
             urls = registerFunc(cmd, lambda c,f: None, self, True)
             cmd._callbackUrl = urls
         print "adding cluster",cluster
         self.runningClusters[cluster] = finishFunc
         cluster.exec_finishedCmds = set()
-        self._roots.extend(map(lambda c: (c,cluster), cluster.roots))
+        map(lambda c: self._enqueue(c,cluster), cluster.roots)
 
     def _launch(self, cmd, locations=[]):
         "Placeholder: runtime alias of launchFake or launchLocal"
@@ -596,7 +613,7 @@ class NewLocalExecutor:
                          cmd.inputs)
         if locations:
             cmd.inputSrcs = locations
-        if missing:
+        if False and missing:
             fetched = self._fetchLogicals(missing, cmd.inputSrcs)
             cmd.rFetchedFiles = fetched
             fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
@@ -1112,7 +1129,7 @@ def testRun(config, execu):
     pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
     print "Running, will force stop after 20 seconds"
     try:
-        time.sleep(25)
+        time.sleep(3)
     except:
         pass
     e[0].forceJoin()
