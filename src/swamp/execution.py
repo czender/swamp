@@ -382,7 +382,10 @@ class NewLocalExecutor:
         self._launch = self._launchLocal
         self._threadRun = self._threadRunLocal
         self.cmdQueue = Queue.Queue()
+        self.cmdsEnqueued = set()
+        self.cmdsEnqueuedLock = threading.Lock()
         self.slots = 2 # FIXME: pull from config
+        self.stateLock = threading.Lock()
         self._startPool(self.slots)
         self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
         def eee(c,cc):
@@ -530,6 +533,7 @@ class NewLocalExecutor:
         pass
         
     def _graduateCmd(self, cmdTuple):
+        self.stateLock.acquire()
         # fix internal structures to be consistent:
         cmd = cmdTuple[0]
         cluster = cmdTuple[1]
@@ -540,6 +544,7 @@ class NewLocalExecutor:
             self.actual[x[0]] = x[1]
 
         # put children on root queue if ready
+        newready = set()
         for c in cmd.children:
             if c not in cluster: # don't dispatch outside my cluster
                 continue
@@ -549,8 +554,14 @@ class NewLocalExecutor:
                            True)
             #print "ready?", ready
             if ready:
-                print "parent",id(cmd),"enqueuing",id(c)
-                self._enqueue(c,cluster)
+                newready.add(c)
+        # Protect enqueuing since threads can race here
+        # (2 parents-> 1 child)
+        self.cmdsEnqueuedLock.acquire()
+        enq = newready.difference(self.cmdsEnqueued)
+        self.cmdsEnqueued.update(enq)
+        self.cmdsEnqueuedLock.release()
+        map(lambda c: self._enqueue(c,cluster), enq)
         
         # report results
         self._touchUrl(cmd._callbackUrl[0])
@@ -560,7 +571,7 @@ class NewLocalExecutor:
             func = self.runningClusters.pop(cluster)
             func()
             self.finishedClusters.add(cluster)
-            
+        self.stateLock.release()
         
     def _touchUrl(self, url):
         if isinstance(url, type(lambda : True)):
@@ -584,7 +595,8 @@ class NewLocalExecutor:
         # and urls if remote.
         # for local executor, can use null hook.
         # finishFunc is a function to call when the cluster is finished.
-        print "dispatching", cluster
+        # dispatch(...) needs to be 'nonblocking'
+        print "dispatching", cluster, len(cluster)
         for cmd in cluster:
             urls = registerFunc(cmd, lambda c,f: None, self, True)
             cmd._callbackUrl = urls

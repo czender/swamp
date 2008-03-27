@@ -16,6 +16,7 @@ import itertools
 import md5
 import struct
 import time
+import threading
 
 # SWAMP imports
 #from swamp.execution import NewParallelDispatcher
@@ -136,8 +137,11 @@ class NewParallelDispatcher:
         #self.running = {} # (e,etoken) -> cmd
         #self.result = None
         self.readyClusters = set() # unordered. prefer fast member testing
-        self.runningClusters = set() # unordered. prefer fast member testing
+        self.qClusters = set() # unordered. prefer fast member testing
         self.finishedClusters = set()
+        self.gradLock = threading.Lock()
+        self.stateLock = threading.Lock()
+        self.transClusters = []
         self.count = 0
         pass
 
@@ -147,8 +151,10 @@ class NewParallelDispatcher:
         while (unIdleExecutors < numExecutors) and self.rootClusters:
             e = self.polledExecutor.next()
             if e.needsWork():
+                self.stateLock.acquire()
                 c = self.rootClusters.next()
                 self._dispatchCluster(c, e)
+                self.stateLock.release()
                 unIdleExecutors = 0
             else:
                 unIdleExecutors += 1
@@ -212,32 +218,48 @@ class NewParallelDispatcher:
         return
     
     def graduateCluster(self, cluster, executor):
-        # Discard from the running list
-        self.runningClusters.discard(cluster)
+        self.stateLock.acquire()
+        rp = ""
         # Put cluster on a 'finished clusters' list
         self.finishedClusters.add(cluster)
         # Now update a ready clusters list-- we prefer dispatching
         # from this one over the root clusters list, thus favoring
         # depth-first rather than breadth first.
         newReady = []
+        self.gradLock.acquire()
+        ckag = map(id, self.readyClusters) + map(id, self.qClusters)
+        ckag.sort()
+        
         cands = filter(lambda c: (c not in self.readyClusters)
-                       and (c not in self.runningClusters), cluster.children)
-        print "I graduated a cluster! ", cluster
+                       and (c not in self.qClusters),
+                       cluster.children)
+        rp += "I graduated a cluster! " + str(id(cluster)) + "\n"
         newReady = filter(lambda c: c.ready(self.finished), cands)
         # If we made a cluster ready, dispatch it.
+
+        c = None # Buffer to minimize lock holding time
         if len(newReady) > 0:
-            self._dispatchCluster(newReady[0], executor)
+            c = newReady[0]
             # Then, put the remaining clusters on the ready list
             self.readyClusters.update(newReady[1:])
-
+            rp +=  "clusFrom parent: %s\n" % str(id(cluster))
         elif self.readyClusters:
             # or dispatch from already-ready
             c = self.readyClusters.pop()
-            self._dispatchCluster(c, executor)
+            rp +=  "clusFrom readylist\n"
         elif self.rootClusters:
             c = self.rootClusters.next()
+            rp +=  "clusFrom ROOT\n"
+        if c:
+            self.qClusters.add(c) # Ugly.
+        self.gradLock.release()
+        if c: 
             self._dispatchCluster(c, executor)
-            
+            rp += "limbo " + str( map(id, self.transClusters)) + "\n"
+            rp +=  "checked against " + str(ckag) + "\n"
+
+        print rp
+        self.stateLock.release()
         pass
 
     def _dispatchCluster(self, cluster, executor):
@@ -246,8 +268,8 @@ class NewParallelDispatcher:
         map(lambda i: inputs.update(i),
             map(lambda c: c.inputsWithParents, cluster.roots))
         inputLocs = map(lambda f:(f, self.fileLoc(f)), inputs)
-        print "cluster parents are",inputs
-        self.runningClusters.add(cluster)
+        print "cluster parents are",map(id,inputs)
+        print "cluster's cluster parents are", map(id,cluster.parents)
         executor.dispatch(cluster, self._registerCallback,
                           lambda : self.graduateCluster(cluster, executor))
 
