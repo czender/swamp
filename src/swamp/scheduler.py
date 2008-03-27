@@ -141,8 +141,8 @@ class NewParallelDispatcher:
         self.finishedClusters = set()
         self.gradLock = threading.Lock()
         self.stateLock = threading.Lock()
-        self.transClusters = []
         self.count = 0
+        self.targetCount = 0
         pass
 
     def _dispatchRoots(self):
@@ -160,6 +160,7 @@ class NewParallelDispatcher:
                 unIdleExecutors += 1
 
     def dispatchAll(self, cmdList, hook=lambda f:None):
+        self.targetCount += len(cmdList)
         # Break things into clusters:
         p = PlainPartitioner(cmdList)
         self.clusters = p.result()
@@ -203,7 +204,9 @@ class NewParallelDispatcher:
         """delete a callback.  Generally, each callback is supposed to be executed at most once.
         """
         self.listener.deleteCallback(url)
-    
+
+    def idle(self):
+        return self.count >= self.targetCount
     def keepBusy(self):
         # run threads for each executor?... well, no.
         # We'll run a thread for each thread in a local executor
@@ -218,7 +221,7 @@ class NewParallelDispatcher:
         return
     
     def graduateCluster(self, cluster, executor):
-        self.stateLock.acquire()
+
         rp = ""
         # Put cluster on a 'finished clusters' list
         self.finishedClusters.add(cluster)
@@ -255,11 +258,9 @@ class NewParallelDispatcher:
         self.gradLock.release()
         if c: 
             self._dispatchCluster(c, executor)
-            rp += "limbo " + str( map(id, self.transClusters)) + "\n"
-            rp +=  "checked against " + str(ckag) + "\n"
 
         print rp
-        self.stateLock.release()
+
         pass
 
     def _dispatchCluster(self, cluster, executor):

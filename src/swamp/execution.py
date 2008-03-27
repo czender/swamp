@@ -447,23 +447,6 @@ class NewLocalExecutor:
         self.alive = False
         map(lambda t: self.cmdQueue.put(None), self._pool)
    
-    def _runCommand(self, binPath, arglist):
-        print "asked to dispatch ", cmd
-        # use errno-513-resistant method of execution.
-        exitcode = None
-        while exitcode is None:
-            try:
-                exitcode = os.spawnv(os.P_WAIT, binPath, arglist)
-            except OSError, e:
-                if not (e.errno == 513):
-                    raise
-                pass #retry on ERESTARTNOINTR
-        
-        # consider:
-        # exitcode=subprocess.call(executable=binPath,
-        # args=arglist, stdout=some filehandle with output,
-        # stderrr= samefilehandle)
-        return exitcode
 
     def _threadRun(self):
         "Placeholder: runtime alias of _threadRunFake or _threadRunLocal"
@@ -633,6 +616,23 @@ class NewLocalExecutor:
                                       self.filemap.mapWriteFile)
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
+        print "ready to run", cmdLine
+
+        # use errno-513-resistant method of execution.
+        code = None
+        while code is None:
+            try:
+                code = os.spawnv(os.P_WAIT, self.binaryFinder(cmd), cmdLine)
+            except OSError, e:
+                if not (e.errno == 513):
+                    raise
+                pass #retry on ERESTARTNOINTR
+        
+        # consider:
+        # exitcode=subprocess.call(executable=binPath,
+        # args=arglist, stdout=some filehandle with output,
+        # stderrr= samefilehandle)
+        return code
         
     def _fetchLogicals(self, logicals, srcs):
         fetched = []
@@ -1105,8 +1105,10 @@ class RemoteExecutor:
 
 
 def makeTestConfig():
-    
-    pass
+    class TestConfig:
+        def __init__(self):
+            self.execNcoDap = "/usr/bin"
+    return TestConfig()
 
 def makeFakeExecutor():
     return NewLocalExecutor(mode='fake')
@@ -1139,12 +1141,17 @@ def testRun(config, execu):
     import swamp.scheduler as scheduler
     pd = scheduler.NewParallelDispatcher(config, e)
     pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
-    print "Running, will force stop after 20 seconds"
+    print "Running, no stops forced now."
     try:
         time.sleep(3)
     except:
         pass
+    #e[0].forceJoin()
+
+    while not pd.idle():
+        time.sleep(1)
     e[0].forceJoin()
+
     print "cmds exec'd", pd.count
 
 def testLocalDispatch():
