@@ -221,7 +221,10 @@ class NewParallelDispatcher:
         return
     
     def graduateCluster(self, cluster, executor):
-
+        ## Much of this graduation logic should be moved to the other
+        ## 'graduate' function.  That will let child clusters start
+        ## earlier, notably when they depend on a subset of the
+        ## cluster's outputs
         rp = ""
         # Put cluster on a 'finished clusters' list
         self.finishedClusters.add(cluster)
@@ -326,7 +329,13 @@ class NewParallelDispatcher:
 
             # If it's a leaf cmd, then publish its results.
             # Apply reaper logic: should be same as before.
-            
+
+            # delete consumed files.
+            if self.okayToReap:
+                self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
+                                         cmd.inputsWithParents))
+            e = executor # token is (executor, etoken)
+            map(lambda o: appendList(self.execLocation, o, e), cmd.outputs)
             return
             #######
             # update the readylist
@@ -350,6 +359,22 @@ class NewParallelDispatcher:
             hook(cmd)
             pass
 
+    def isDead(self, file, consumingCmd):
+        # Find the producing cmd, see if all its children are finished.
+        return 0 == len(filter(lambda c: c not in self.finished,
+                               consumingCmd.factory.commandByLogicalIn[file]))
+
+    def releaseFiles(self, files):
+        if not files:
+            return
+        log.debug("ready to delete " + str(files))
+        # collect by executors
+        map(lambda e: e.discardFilesIfHosted(files), self.executors)
+            
+        # cleanup execLocation
+        map(self.execLocation.pop, files)
+
+   
     def fileLoc(self, file):
         """ return url of logical output file"""
         execs = self.execLocation[file]

@@ -1104,6 +1104,9 @@ class RemoteExecutor:
     pass # end class RemoteExecutor 
 
 
+######################################################################
+# Things to help debugging
+######################################################################
 def makeTestConfig():
     class TestConfig:
         def __init__(self):
@@ -1113,6 +1116,21 @@ def makeTestConfig():
 def makeFakeExecutor():
     return NewLocalExecutor(mode='fake')
 
+class PseudoFactory:
+    """a stand-in for a command factory based on the provided
+    list of commands"""
+    def __init__(self, cmdList):
+        def tuples():
+            for c in cmdList:
+                for i in c.inputs:
+                    yield (i,c)
+        d = {}
+        map(lambda t: d.setdefault(t[0],[]).append(t[1]), tuples())
+        self.commandByLogicalIn = d
+        pass
+        
+                
+            
 def loadCmds(filename):
     import cPickle as pickle
     return pickle.load(open(filename))
@@ -1125,22 +1143,20 @@ def makeLocalExec(config):
                                                "./b" ),
                             slots=2)
     
-#     return LocalExecutor(NcoBinaryFinder(config),
-#                              FileMapper("swamp%d"%os.getpid(),
-#                                         "./s",
-#                                         "./p",
-#                                         "./b" ),
-#                              2)
 
 def testDispatcher():
     config = makeTestConfig()
     return testRun(config, [makeFakeExecutor()])
 
+
 def testRun(config, execu):
     e = execu
     import swamp.scheduler as scheduler
     pd = scheduler.NewParallelDispatcher(config, e)
-    pd.dispatchAll(loadCmds("exectestCmds.pypickle"))
+    cmds = loadCmds("exectestCmds.pypickle")
+    pf = PseudoFactory(cmds)
+    map(lambda c: setattr(c,"factory",pf), cmds)
+    pd.dispatchAll(cmds)
     print "Running, no stops forced now."
     try:
         time.sleep(3)
