@@ -71,7 +71,7 @@ class EarlyExecutor(threading.Thread):
             retcode = self.executor.join(tok)
         # NOT FINISHED
             
-class NewLocalExecutor:
+class LocalExecutor:
     """
     An executor in the "new style" executes clusters rather than
     single commands.
@@ -98,8 +98,10 @@ class NewLocalExecutor:
         self.slots = slots
         if mode == 'fake':
             self._initFakeMode()
-        else:
+        elif mode == 'local':
             self._initLocalMode()
+        else:
+            log.error("Serious Error: constructed mode-less executor")
         self.thread = threading.Thread(target=self._threadRun, args=())
         self.thread.start()
         pass
@@ -123,12 +125,12 @@ class NewLocalExecutor:
         self.stateLock = threading.Lock()
         self._startPool(self.slots)
         self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
-        def eee(c,cc):
-            print "enqueue", id(c)
-            self.cmdQueue.put((c,cc))
-        self._enqueue = eee
         pass
     
+    def _threadRun(self):
+        "Placeholder: runtime alias of _threadRunFake or _threadRunLocal"
+        raise "---ERROR--- unmapped call to threadRun"
+
     def _threadRunLocal(self):
         # the non-fake version doesn't really have to do anything but
         # wait on the pids of its spawned processes.  And when it's
@@ -145,7 +147,6 @@ class NewLocalExecutor:
         while self.alive:
             # dispatch as we are able.
             # shove everything we can on the queue.
-            print "mgmt queuing ready", len(self._roots)
             self._queueAllReady()
             # Is there a real reason for doing this more
             # than once? What if the original queuing action puts
@@ -172,6 +173,10 @@ class NewLocalExecutor:
             print "dispatching cmdtuple",ctuple
             (cmd,clus) = ctuple
             code = self._launch(cmd)
+            if code != 0:
+                self._failCmd(ctuple, code)
+                break # Do not continue
+                
             #FIXME: check for error.
             self._graduateCmd(ctuple)
 
@@ -182,12 +187,6 @@ class NewLocalExecutor:
         self.alive = False
         map(lambda t: self.cmdQueue.put(None), self._pool)
    
-
-    def _threadRun(self):
-        "Placeholder: runtime alias of _threadRunFake or _threadRunLocal"
-        raise "---ERROR--- unmapped call to threadRun"
-
-
         
     def _threadRunFake(self):
         open("/dev/stderr","w").write( "start fake")
@@ -246,12 +245,23 @@ class NewLocalExecutor:
         self._graduateCmd(cmdTuple)
         self.idleTicks = 0
         pass
-    def _newGraduate(self, cmdTuple):
+
+    @staticmethod
+    def newInstance(config):
+        return LocalExecutor('local', NcoBinaryFinder(config),
+                             FileMapper("swamp%d"%os.getpid(),
+                                        config.execSourcePath,
+                                        config.execScratchPath,
+                                        config.execBulkPath),
+                             config.execLocalSlots)
+
+    def _failCmd(self, cmdTuple, code):
+        self._touchUrl(cmdTuple[0]._callbackUrl[1])
         
-        pass
         
     def _graduateCmd(self, cmdTuple):
         self.stateLock.acquire()
+        
         # fix internal structures to be consistent:
         cmd = cmdTuple[0]
         cluster = cmdTuple[1]
@@ -266,7 +276,7 @@ class NewLocalExecutor:
         for c in cmd.children:
             if c not in cluster: # don't dispatch outside my cluster
                 continue
-            #print "inputs",c.inputs, "availfiles",self._availFiles
+            print "inputs",c.inputs, "availfiles",self.actual.keys()
             ready = reduce(lambda x,y: x and y,
                            map(lambda f: f in self.actual, c.inputs),
                            True)
@@ -285,7 +295,6 @@ class NewLocalExecutor:
         self._touchUrl(cmd._callbackUrl[0])
         if len(cluster.exec_finishedCmds) == len(cluster.cmds):
             # call cluster graduation.
-            print "popping",cluster
             func = self.runningClusters.pop(cluster)
             func()
             self.finishedClusters.add(cluster)
@@ -343,7 +352,7 @@ class NewLocalExecutor:
                          cmd.inputs)
         if locations:
             cmd.inputSrcs = locations
-        if False and missing:
+        if missing:
             fetched = self._fetchLogicals(missing, cmd.inputSrcs)
             cmd.rFetchedFiles = fetched
             fetched = self._verifyLogicals(set(cmd.inputs).difference(missing))
@@ -351,7 +360,6 @@ class NewLocalExecutor:
                                       self.filemap.mapWriteFile)
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
-        print "ready to run", cmdLine
 
         # use errno-513-resistant method of execution.
         code = None

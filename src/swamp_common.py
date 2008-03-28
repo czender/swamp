@@ -305,6 +305,11 @@ class SwampInterface:
         because of the twisted.reactor environment, which traps the
         keyboard interrupt and merely aborts the reactor's listening."""
         self.mainThread.acceptDeath()
+        for e in self.executor:
+            try:
+                e.forceJoin()
+            except:
+                pass
 
     def submit(self, script, outputMapper):
         t = SwampTask(self.executor, self.config,
