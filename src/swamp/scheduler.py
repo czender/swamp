@@ -47,7 +47,9 @@ class Scheduler:
         self._graduateHook = graduateHook
         self.result = None # result is True on success, or a string/other-non-boolean on failure.
         self.cmdCount = 0
+        self.serFinish = []
         pass
+                           
 
     def _makeTaskId(self):
         # As SWAMP matures, we should rethink the purpose of a taskid
@@ -95,6 +97,7 @@ class Scheduler:
 
     
     def executeSerialAll(self, executor=None):
+    
         def run(cmd):
             if executor:
                 tok = executor.launch(cmd)
@@ -107,6 +110,7 @@ class Scheduler:
                 log.error("error running command %s" % (c))
                 self.result = "ret was %s, error running %s" %(str(ret), c)
                 break
+            
 
     def executeParallelAll(self, executors=None):
         """executors is a container(currently, a list) of the available
@@ -143,6 +147,8 @@ class NewParallelDispatcher:
         self.stateLock = threading.Lock()
         self.count = 0
         self.targetCount = 0
+        self.result = None
+        self.resultEvent = threading.Event()
         pass
 
     def _dispatchRoots(self):
@@ -160,6 +166,8 @@ class NewParallelDispatcher:
                 unIdleExecutors += 1
 
     def dispatchAll(self, cmdList, hook=lambda f:None):
+        self.resultEvent.clear()
+        self.gradHook = hook
         self.targetCount += len(cmdList)
         # Break things into clusters:
         p = PlainPartitioner(cmdList)
@@ -174,6 +182,8 @@ class NewParallelDispatcher:
         # remaining scheduling and dispatching will run as
         # asynchronously-initiated callbacks.
 
+        # caller expects us to block until finish, so let's block.
+        self.resultEvent.wait()
         return    
 
 
@@ -207,6 +217,7 @@ class NewParallelDispatcher:
 
     def idle(self):
         return self.count >= self.targetCount
+
     def keepBusy(self):
         # run threads for each executor?... well, no.
         # We'll run a thread for each thread in a local executor
@@ -263,7 +274,9 @@ class NewParallelDispatcher:
             self._dispatchCluster(c, executor)
 
         print rp
-
+        if self.idle():
+            self.result = True 
+            self.resultEvent.set()
         pass
 
     def _dispatchCluster(self, cluster, executor):
@@ -283,19 +296,9 @@ class NewParallelDispatcher:
         #checking, so it doesn't really need to know when things
         #are finished.
         gradHook(cmd,fail) # Service the hook function first (better later?)
-        # who's the hook?
-        map(lambda o: appendList(self.execLocation, o, executor), cmd.outputs)
-
-        print "graduate",cmd.cmd, cmd.argList, "total=",self.count
+        # this is the executor's hook
+        print "graduate",cmd.cmd, cmd.argList, "total=",self.count, fail
         self.count += 1
-        if fail:
-            print "we failed"
-            # Now, process an abort.
-            return
-        print "succeeded"
-
-        pass
-    
         if fail:
             origline = ' '.join([cmd.cmd] + map(lambda t: ' '.join(t), cmd.argList) + cmd.leftover)
             s = "Bad return code %s from cmdline %s %d outs=%s" % (
@@ -309,6 +312,7 @@ class NewParallelDispatcher:
 
             self.result = "Error at line %d : %s" %(cmd.referenceLineNum,
                                                     origline)
+            self.resultEvent.set()
             return
             #raise StandardError(s)
         else:
@@ -335,29 +339,11 @@ class NewParallelDispatcher:
                 self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
                                          cmd.inputsWithParents))
             e = executor # token is (executor, etoken)
-            map(lambda o: appendList(self.execLocation, o, e), cmd.outputs)
+            map(lambda o: appendList(self.execLocation, o, executor), cmd.outputs)
+            print "--------------------Appended", cmd.outputs
+
+            self.gradHook(cmd)
             return
-            #######
-            # update the readylist
-            newready = self.findMadeReady(cmd)
-            map(lambda x: heappush(self.ready,x), newready)
-            # delete consumed files.
-            if self.okayToReap:
-                self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
-                                         cmd.inputsWithParents))
-            e = token[0] # token is (executor, etoken)
-            map(lambda o: appendList(self.execLocation, o, e), cmd.outputs)
-            execs = self.execLocation[cmd.outputs[0]]
-
-            #self._publishFiles(filter(lambda o: self.isOutput(o),
-            #                         cmd.outputs))
-            #execs[0].actual[cmd.outputs[0]] # FIXME: can I delete this?
-            # hardcoded for now.
-
-            # call this to migrate files to final resting places.
-            # Use a generic hook passed from above.
-            hook(cmd)
-            pass
 
     def isDead(self, file, consumingCmd):
         # Find the producing cmd, see if all its children are finished.
@@ -367,12 +353,16 @@ class NewParallelDispatcher:
     def releaseFiles(self, files):
         if not files:
             return
-        log.debug("ready to delete " + str(files))
+        log.debug("ready to delete " + str(files)+ "from " + str(self.executors))
         # collect by executors
         map(lambda e: e.discardFilesIfHosted(files), self.executors)
-            
-        # cleanup execLocation
-        map(self.execLocation.pop, files)
+
+        try:
+            # cleanup execLocation
+            map(self.execLocation.pop, files)
+        except:
+            print "error execlocationpop",files
+            pass
 
    
     def fileLoc(self, file):
