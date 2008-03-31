@@ -116,7 +116,6 @@ class SwampTask:
             log.debug("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
             pass
-        log.debug("publishHook: obj is " + str(obj))
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)
         log.debug("filtered is %s" %(str(files)))

@@ -94,7 +94,7 @@ class LocalExecutor:
         self._roots = []
         self.binaryFinder = binaryFinder
         self.filemap = filemap
-        self.actual = {}
+        self.actual = {} # shared: not safe across tasks
         self.slots = slots
         if mode == 'fake':
             self._initFakeMode()
@@ -119,10 +119,12 @@ class LocalExecutor:
     def _initLocalMode(self):
         self._launch = self._launchLocal
         self._threadRun = self._threadRunLocal
+        self.finished = set() ## DEBUG: REMOVE later
         self.cmdQueue = Queue.Queue()
         self.cmdsEnqueued = set()
         self.cmdsEnqueuedLock = threading.Lock()
         self.stateLock = threading.Lock()
+        self._fetchLocl = threading.Lock()
         self._startPool(self.slots)
         self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
         pass
@@ -170,7 +172,7 @@ class LocalExecutor:
             if ctuple: print "thread pulled",id(ctuple[0])
             if not self.alive: # still alive?
                 break
-            print "dispatching cmdtuple",ctuple
+            #print "dispatching cmdtuple",ctuple
             (cmd,clus) = ctuple
             code = self._launch(cmd)
             if code != 0:
@@ -260,13 +262,14 @@ class LocalExecutor:
         
         
     def _graduateCmd(self, cmdTuple):
+
         self.stateLock.acquire()
-        
         # fix internal structures to be consistent:
         cmd = cmdTuple[0]
         cluster = cmdTuple[1]
         # Update cluster status
         cluster.exec_finishedCmds.add(cmd)
+        self.finished.add(cmd) ## DEBUG. REMOVE later.
 
         for x in cmd.actualOutputs:
             self.actual[x[0]] = x[1]
@@ -276,10 +279,10 @@ class LocalExecutor:
         for c in cmd.children:
             if c not in cluster: # don't dispatch outside my cluster
                 continue
-            print "inputs",c.inputs, "availfiles",self.actual.keys()
             ready = reduce(lambda x,y: x and y,
                            map(lambda f: f in self.actual, c.inputs),
                            True)
+            #print "inputs",c.inputs, "availfiles",self.actual.keys(),ready
             #print "ready?", ready
             if ready:
                 newready.add(c)
@@ -347,6 +350,8 @@ class LocalExecutor:
         pass
 
     def _launchLocal(self, cmd, locations=[]):
+        if not reduce(lambda a,b: a and b, map(lambda c: c in self.finished,  cmd.parents), True):
+            print id(cmd), "was queued, but isn't ready!"
         # make sure our inputs are ready
         missing = filter(lambda f: not self.filemap.existsForRead(f),
                          cmd.inputs)
@@ -385,9 +390,9 @@ class LocalExecutor:
         
         d = dict(srcs)
         for lf in logicals:
-            self.fetchLock.acquire()
+            self._fetchLock.acquire()
             if self.filemap.existsForRead(lf):
-                self.fetchLock.release()
+                self._fetchLock.release()
                 log.debug("satisfied by other thread")
                 continue
             self.fetchFile = lf
@@ -398,12 +403,17 @@ class LocalExecutor:
             self._fetchPhysical(phy, d[lf])
             fetched.append((lf, phy))
             self.fetchFile = None
-            self.fetchLock.release()
+            self._fetchLock.release()
         return fetched
 
     def discardFilesIfHosted(self, files):
+        # We tolerate being called with files we don't host.
+        hosted = filter(lambda f: f in self.actual, files)
+        
         # need to map to actual locations first.
         mappedfiles = itertools.imap(self.filemap.mapReadFile, files)
+        map(self.actual.pop, hosted)
+
         return self._clearFiles(mappedfiles)
 
     def _clearFiles(self, filelist):
