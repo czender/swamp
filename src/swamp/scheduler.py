@@ -273,7 +273,7 @@ class NewParallelDispatcher:
         if c: 
             self._dispatchCluster(c, executor)
 
-        print rp
+        #print rp
         if self.idle():
             self.result = True 
             self.resultEvent.set()
