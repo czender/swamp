@@ -29,8 +29,8 @@ from swamp.mapper import FileMapper
 # FIXME: reorg code to not need these two:
 from swamp.execution import LocalExecutor
 from swamp.execution import NcoBinaryFinder
-
-
+from swamp.partitioner import unpickleCluster
+from swamp.command import unpickle as unpickleCommand
 
 class LaunchThread(threading.Thread):
     def __init__(self, launchFunc, updateFunc):
@@ -196,8 +196,10 @@ class JobManager:
                                      self.config.execSourcePath,
                                      self.config.execScratchPath,
                                      self.config.execBulkPath)
-        self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
-                                       self.fileMapper)
+        self.localExec = LocalExecutor("local",
+                                       NcoBinaryFinder(self.config),
+                                       self.fileMapper,
+                                       self.config.execLocalSlots)
         
         self._adjustHostnameFields()
         target = (self.config.masterUrl, self.config.masterAuth)
@@ -293,6 +295,12 @@ class JobManager:
         log.info("Reset requested")
         self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
+
+    def processCluster(self, pCluster, callUrl):
+        # cluster is a pickled cluster of commands
+        c = unpickleCluster(pCluster, unpickleCommand)
+        self.localExec.dispatch(c, None, lambda : None)
+        
         
     def slaveExec(self, pickledCommand):
         cf = CommandFactory(self.config)

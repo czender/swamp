@@ -6,8 +6,8 @@
 # Copyright (c) 2007, Daniel L. Wang and Charles S. Zender
 # Licensed under the GNU General Public License v3
 
-"""Parser and scheduler module for SWAMP
-This provides high level access to SWAMP parsing and scheduling functionality.
+"""High-level task management and interface for SWAMP.  This should be
+moved into appropriate swamp.x modules.
 """
 __author__ = "Daniel L. Wang <wangd@uci.edu>"
 #__all__ = ["Parser"] # I should fill this in when I understand it better
@@ -30,7 +30,8 @@ from swamp.config import Config
 from swamp.parser import Parser
 from swamp.command import CommandFactory
 from swamp import log
-from swamp.execution import RemoteExecutor
+from swamp.execution import NewRemoteExecutor as RemoteExecutor
+#from swamp.execution import RemoteExecutor
 from swamp.mapper import LinkedMap
 from swamp.scheduler import Scheduler
 import swamp.statistics as statistics
@@ -58,7 +59,6 @@ class SwampTask:
     """
         self.config = config
         self.parser = Parser()
-        #FIXME: need to define publishIfOutput
         self.scheduler = Scheduler(config, self._publishIfOutput)
         self.parser.commandHandler(self.scheduler.schedule)
         self._commandFactory = CommandFactory(self.config)
