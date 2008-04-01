@@ -13,6 +13,8 @@
 
 # Python dependencies:
 from collections import deque
+import copy
+from itertools import imap
 import operator
 
 
@@ -111,7 +113,16 @@ class CommandCluster:
                       map(lambda cmd: f.issuperset(cmd.parents),
                           self.roots),
                       True)
-        
+    def pickleSelf(self, pickleFunc):
+        # Shallow copy myself
+        # What we need to do is to isolate the cluster from troublesome
+        # outside references, and then call the normal command pickler.
+
+        c = copy.copy(self)
+        # Replace cmd list with 'safe' cmds
+        c.cmds = map(pickleFunc, c.cmds)
+        return pickle.dumps(c)
+
     def _computeExtDepNodes(self):
         return filter(lambda cmd: # either no parents, or have ext parents
                       (0 == len(cmd.parents)) or
@@ -131,6 +142,12 @@ class CommandCluster:
         return self.cmds.__iter__()
     def __len__(self):
         return len(self.cmds)
+
+def unpickleCluster(pickled, cmdUnpickle):
+    c = pickle.loads(pickled)
+    c.cmds = set(map(cmdUnpickle, c.cmds))
+    c._computeExtDepNodes()
+    return c
 
 class PlainPartitioner:
     """Find partitions based on the subtrees of each root (parent-less) node.

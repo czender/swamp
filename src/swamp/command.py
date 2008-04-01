@@ -74,8 +74,7 @@ class Command:
         safecopy.children = None
         safecopy.factory = None
         return pickle.dumps(safecopy)
-
-
+                
     # need to map all non-input filenames.
     # apply algorithm to find temps and outputs
     # then mark them as remappable.
@@ -119,7 +118,22 @@ class Command:
         # we'd like to do self.__cmp__ = self.cmpSched , but it breaks.
 
     pass # end of Command class
-        
+
+def pickleRestrict(cmd, restSet):
+    # restSet: obj supporting 'in' operator that can tell us if a
+    # reference can be preserved.
+    safecopy = copy.copy(cmd)
+    safecopy.parents = filter(lambda c: c in restSet,
+                              safecopy.parents)
+    safecopy.children = filter(lambda c: c in restSet,
+                               safecopy.children)
+    safecopy.factory = None
+    
+    return pickle.dumps(safecopy)
+
+def unpickle(pickled):
+    return pickle.loads(pickled)
+
 class CommandFactory:
     """this is needed because we want to:
     a) connect commands together

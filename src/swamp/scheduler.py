@@ -206,9 +206,9 @@ class NewParallelDispatcher:
                     lambda : self._graduate(cmd, gradHook, executor, True))
         else:
             print "Uh oh, I don't know how to do this yet"
-            self.listener.addCallback(gradHook)
-
-            return ()
+            #self.listener.addCallback(gradHook)
+            
+            return "http://localhost:8070"
 
     def _unregisterCallback(self, url):
         """delete a callback.  Generally, each callback is supposed to be executed at most once.
@@ -285,8 +285,8 @@ class NewParallelDispatcher:
         map(lambda i: inputs.update(i),
             map(lambda c: c.inputsWithParents, cluster.roots))
         inputLocs = map(lambda f:(f, self.fileLoc(f)), inputs)
-        print "cluster parents are",map(id,inputs)
-        print "cluster's cluster parents are", map(id,cluster.parents)
+        #print "cluster parents are",map(id,inputs)
+        #print "cluster's cluster parents are", map(id,cluster.parents)
         executor.dispatch(cluster, self._registerCallback,
                           lambda : self.graduateCluster(cluster, executor))
 
@@ -297,7 +297,7 @@ class NewParallelDispatcher:
         #are finished.
         gradHook(cmd,fail) # Service the hook function first (better later?)
         # this is the executor's hook
-        print "graduate",cmd.cmd, cmd.argList, "total=",self.count, fail
+        #print "graduate",cmd.cmd, cmd.argList, "total=",self.count, fail
         self.count += 1
         if fail:
             origline = ' '.join([cmd.cmd] + map(lambda t: ' '.join(t), cmd.argList) + cmd.leftover)
@@ -340,7 +340,7 @@ class NewParallelDispatcher:
                                          cmd.inputsWithParents))
             e = executor # token is (executor, etoken)
             map(lambda o: appendList(self.execLocation, o, executor), cmd.outputs)
-            print "--------------------Appended", cmd.outputs
+            
 
             self.gradHook(cmd)
             return

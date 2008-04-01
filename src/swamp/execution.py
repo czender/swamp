@@ -32,6 +32,7 @@ from SOAPpy import SOAPProxy
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
 from swamp.partitioner import PlainPartitioner
+from swamp.command import pickleRestrict 
 
 
 
@@ -258,7 +259,7 @@ class LocalExecutor:
                              config.execLocalSlots)
 
     def _failCmd(self, cmdTuple, code):
-        self._touchUrl(cmdTuple[0]._callbackUrl[1])
+        self._touchUrl(cmdTuple[0].callbackUrl[1])
         
         
     def _graduateCmd(self, cmdTuple):
@@ -295,7 +296,7 @@ class LocalExecutor:
         map(lambda c: self._enqueue(c,cluster), enq)
         
         # report results
-        self._touchUrl(cmd._callbackUrl[0])
+        self._touchUrl(cmd.callbackUrl[0])
         if len(cluster.exec_finishedCmds) == len(cluster.cmds):
             # call cluster graduation.
             func = self.runningClusters.pop(cluster)
@@ -327,9 +328,10 @@ class LocalExecutor:
         # finishFunc is a function to call when the cluster is finished.
         # dispatch(...) needs to be 'nonblocking'
         print "dispatching", cluster, len(cluster)
-        for cmd in cluster:
-            urls = registerFunc(cmd, lambda c,f: None, self, True)
-            cmd._callbackUrl = urls
+        if registerFunc:
+            for cmd in cluster:
+                urls = registerFunc(cmd, lambda c,f: None, self, True)
+                cmd.callbackUrl = urls
         print "adding cluster",cluster
         self.runningClusters[cluster] = finishFunc
         cluster.exec_finishedCmds = set()
@@ -438,6 +440,79 @@ class LocalExecutor:
             self.thread.join()
             
     pass
+
+class NewRemoteExecutor:
+    def __init__(self, url, slots):
+        """ url: SOAP url for SWAMP slave
+            slots: max number of running slots
+
+            RemoteExecutor adapts a remote worker's execution resources
+            so that they may be used by a parallel dispatcher.
+            """
+        self.url = url
+        self.slots = slots
+        self.rpc = SOAPProxy(url)
+        log.debug("reset slave at %s with %d slots" %(url,slots))
+        try:
+            self.rpc.reset()
+        except Exception, e:
+            import traceback, sys
+            tb_list = traceback.format_exception(*sys.exc_info())
+            msg =  "".join(tb_list)
+            raise StandardError("can't connect to "+url+str(msg))
+        self.runningClusters = set()
+        self.finishedClusters = set()
+        self.actual = {}
+        self.cmds = {}
+        pass
+    
+    def dispatch(self, cluster, registerFunc, finishFunc):
+        # Register callback URLs for each command
+        cluster.exec_finishCount = 0
+        map(lambda c: registerFunc(c, lambda : self._gradCmd(c, cluster),
+                                   self, False), cluster.cmds)
+        # Set finishing function for the cluster
+        cluster.exec_finishFunc = finishFunc        
+        
+        # Take the cluster, dispatch it
+        # Pass the cluster, including its commands
+        # Cluster should include the URLs.
+        # This bothers me that we can't share the mgmt code with
+        # the top-level execution.
+
+        # Do whatever pickling we need:
+        # For each command, remove external parents/children, because our
+        # helper shouldn't worry about them.
+        pc = cluster.pickleSelf(lambda c: pickleRestrict(c,cluster))
+
+        self.rpc.processCluster(pc, callUrl)
+        
+        pass
+    
+    def forceJoin(self):
+        pass
+
+    def needsWork(self):
+        return len(self.runningClusters) < self.slots
+
+    def discardFilesIfHosted(self, files):
+        """files: iterable of logical filenames to discard"""
+        pass
+
+    def _graduateCmd(self, cmd, cluster):
+        # Cluster callback needs to passthrough this object,
+        # so that we know when a cluster is finished, otherwise
+        # we can't mark ourselves as needing work.
+        # Alternatively, "need for work" can be defined by polling
+        # and checking some mix of processing load and queue length.
+        cluster.exec_finishCount += 1
+        if cluster.exec_finishCount == len(cluster.cmds):
+            cluster.exec_finishFunc()
+            self.runningClusters.pop(cluster)
+            self.finishedClusters.add(cluster)
+        pass
+        
+        
 
 class RemoteExecutor:
     def __init__(self, url, slots):
