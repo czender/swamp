@@ -289,7 +289,9 @@ class NewParallelDispatcher:
         #print "cluster parents are",map(id,inputs)
         #print "cluster's cluster parents are", map(id,cluster.parents)
         executor.dispatch(cluster, self._registerCallback,
-                          lambda : self.graduateCluster(cluster, executor))
+                          lambda : self.graduateCluster(cluster, executor),
+                          outputPatch=self.config.serverUrlFromFile,
+                          locations=inputLocs)
 
         
     def _graduate(self, cmd, gradHook, executor, fail, custom):
