@@ -299,7 +299,8 @@ class JobManager:
     def processCluster(self, pCluster):
         # cluster is a pickled cluster of commands
         c = unpickleCluster(pCluster, unpickleCommand)
-        self.localExec.dispatch(c, None, lambda : None)
+        self.localExec.dispatch(c, None, lambda : None,
+                                self.config.serverUrlFromFile)
         
         
     def slaveExec(self, pickledCommand):

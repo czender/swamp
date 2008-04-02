@@ -127,7 +127,7 @@ class LocalExecutor:
         self.cmdsEnqueued = set()
         self.cmdsEnqueuedLock = threading.Lock()
         self.stateLock = threading.Lock()
-        self._fetchLocl = threading.Lock()
+        self._fetchLock = threading.Lock()
         self._startPool(self.slots)
         self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
         pass
@@ -177,7 +177,7 @@ class LocalExecutor:
                 break
             #print "dispatching cmdtuple",ctuple
             (cmd,clus) = ctuple
-            code = self._launch(cmd)
+            code = self._launch(cmd, locations=clus.exec_inputLocs)
             if code != 0:
                 self._failCmd(ctuple, code)
                 break # Do not continue
@@ -276,7 +276,12 @@ class LocalExecutor:
 
         for x in cmd.actualOutputs:
             self.actual[x[0]] = x[1]
-
+        if cluster.exec_outputPatch:
+            cmd.actualOutputs = map(lambda t:
+                                    (t[0], cluster.exec_outputPatch(t[1]),
+                                            os.stat(t[1]).st_size),
+                                    cmd.actualOutputs)
+        log.debug("Local graduation with outputs: %s" %(str(cmd.actualOutputs)))
         # put children on root queue if ready
         newready = set()
         for c in cmd.children:
@@ -311,11 +316,9 @@ class LocalExecutor:
             return url(None)
         try:
             print "calling!", url
-            data = urllib.urlencode(dict(izip(actualOutputs,
-                                              imap(self.config.serverUrlFromFile,
-                                                   actualOutputs))))
-            
-            f = urllib2.urlopen(url, data)
+            pkg = dict([(x[0],(x[1],x[2])) for x in actualOutputs])
+            data = urllib.urlencode(pkg)
+            f = urllib2.urlopen(url + "?"+data)
             f.read() # read result, discard for now
         except KeyError:
             return False
@@ -325,13 +328,15 @@ class LocalExecutor:
         # cache this.
         return len(self.runningClusters) < self.slots
 
-    def dispatch(self, cluster, registerFunc, finishFunc):
+    def dispatch(self, cluster, registerFunc, finishFunc, outputPatch=None,
+                 locations=[]):
         # registerFunc is f(command, hook, isLocal)
         # registerFunc returns a tuple of success/fail
         # registerFunc should return funcs if local
         # and urls if remote.
         # for local executor, can use null hook.
         # finishFunc is a function to call when the cluster is finished.
+        # outputPatch= f:pathname -> patchedNameForCommand
         # dispatch(...) needs to be 'nonblocking'
         print "dispatching", cluster, len(cluster)
         if registerFunc:
@@ -341,6 +346,11 @@ class LocalExecutor:
         print "adding cluster",cluster
         self.runningClusters[cluster] = finishFunc
         cluster.exec_finishedCmds = set()
+        cluster.exec_outputPatch = outputPatch
+        if locations:
+            cluster.exec_inputLocs = locations
+        elif not hasattr(cluster, 'exec_inputLocs'):
+            cluster.exec_inputLocs = []
         map(lambda c: self._enqueue(c,cluster), cluster.roots)
 
     def _launch(self, cmd, locations=[]):
@@ -414,6 +424,35 @@ class LocalExecutor:
             self._fetchLock.release()
         return fetched
 
+    def _fetchPhysical(self, physical, url):
+        #urllib.urlretrieve(d[lf], phy)
+        # urlretrieve dies on interrupt signals
+        # Use curl: fail silently, silence output, write to file
+        tries = 1
+        maxTries = 3
+        pid = None
+        while pid is None:
+            try:
+                pid = os.spawnv(os.P_NOWAIT, '/usr/bin/curl',
+                                ['curl', "-f", "-s", "-o", physical, url])
+            except OSError, e:
+                if not (e.errno == 513):
+                    raise
+                pass #retry on ERESTARTNOINTR
+        rc = None
+        while rc is None:
+            try:
+                (p,rc) = os.waitpid(pid,0)
+                rc = os.WEXITSTATUS(rc)
+            except OSError, e:
+                if not (e.errno == 4):
+                    raise
+                log.info("Retry, got errno 4 (interrupted syscall)")
+                continue
+            if rc != 0:
+                raise StandardError("error fetching %s (curl code=%d)" %
+                                    (url, rc))
+
     def discardFilesIfHosted(self, files):
         # We tolerate being called with files we don't host.
         hosted = filter(lambda f: f in self.actual, files)
@@ -472,7 +511,8 @@ class NewRemoteExecutor:
         self.cmds = {}
         pass
     
-    def dispatch(self, cluster, registerFunc, finishFunc):
+    def dispatch(self, cluster, registerFunc, finishFunc, outputPatch=None,
+                 locations=[]):
         
         funcs = map(lambda c:
                     setattr(c,
@@ -486,7 +526,7 @@ class NewRemoteExecutor:
         # Cluster should include the URLs.
         # This bothers me that we can't share the mgmt code with
         # the top-level execution.
-
+        cluster.exec_inputLocs = locations
         # Do whatever pickling we need:
         # For each command, remove external parents/children, because our
         # helper shouldn't worry about them.
@@ -519,18 +559,27 @@ class NewRemoteExecutor:
         # Alternatively, "need for work" can be defined by polling
         # and checking some mix of processing load and queue length.
 
+        # custom is of the form: 
+        #{'filename.nc': ["('http://host:8082/pathname/munged.nc', 1234)"]}
+
         
         #if fail:
             # FIXME: Do the right thing when things fail
             #pass
         # handle actualOutputs
         print "graduating with custom=",custom
-        if False:
+        if custom:
+            def unbundle(x):
+                props = x[1][0] # Want to do eval(x[1][0]), but it's unsafe.
+                props = props[1:-1].split(', ') # Drop the parens and split.
+                
+                return (x[0], props[0][1:-1], int(props[1]))
+            cmd.actualOutputs = [unbundle(x) for x in custom.items()]
+            log.debug("Remote cmd produced %s" %(str(cmd.actualOutputs)))
+            self.actual.update([(x[0],x[1]) for x in cmd.actualOutputs])
+        else:
             cmd.actualOutputs = []
-            log.debug("adding %s from %s" % (str(outputs), str(rToken)))
-            for x in outputs:
-                self._addFinishOutput(x[0],x[1])
-                cmd.actualOutputs.append((x[0],x[1], x[2]))
+            log.warning("Remote cmd produced no outputs")
         
         # Do cluster bookkeeping    
         cluster.exec_finishCount += 1
