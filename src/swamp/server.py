@@ -267,7 +267,7 @@ class JobManager:
                                             self.config.servicePort,
                                             self.config.serviceSoapPath)
 
-        self.publishedFuncs = [self.reset, self.slaveExec,
+        self.publishedFuncs = [self.reset, self.processCluster,
                                self.pollState, self.pollStateMany,
                                self.pollOutputs,
                                self.discardFile, self.discardFiles,
@@ -296,7 +296,7 @@ class JobManager:
         self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
 
-    def processCluster(self, pCluster, callUrl):
+    def processCluster(self, pCluster):
         # cluster is a pickled cluster of commands
         c = unpickleCluster(pCluster, unpickleCommand)
         self.localExec.dispatch(c, None, lambda : None)

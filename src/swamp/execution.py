@@ -32,7 +32,7 @@ from SOAPpy import SOAPProxy
 from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
 from swamp.partitioner import PlainPartitioner
-from swamp.command import pickleRestrict 
+from swamp.command import picklableList
 
 
 
@@ -467,12 +467,9 @@ class NewRemoteExecutor:
         pass
     
     def dispatch(self, cluster, registerFunc, finishFunc):
-        # Register callback URLs for each command
-        cluster.exec_finishCount = 0
-        map(lambda c: registerFunc(c, lambda : self._gradCmd(c, cluster),
+        
+        funcs = map(lambda c: registerFunc(c, lambda : self._gradCmd(c, cluster),
                                    self, False), cluster.cmds)
-        # Set finishing function for the cluster
-        cluster.exec_finishFunc = finishFunc        
         
         # Take the cluster, dispatch it
         # Pass the cluster, including its commands
@@ -483,9 +480,15 @@ class NewRemoteExecutor:
         # Do whatever pickling we need:
         # For each command, remove external parents/children, because our
         # helper shouldn't worry about them.
-        pc = cluster.pickleSelf(lambda c: pickleRestrict(c,cluster))
+        pc = cluster.pickleSelf(picklableList)
 
-        self.rpc.processCluster(pc, callUrl)
+        # Fill-in management fields afterwards so they don't get pickled.
+        # Register callback URLs for each command
+        cluster.exec_finishCount = 0
+        # Set finishing function for the cluster
+        cluster.exec_finishFunc = finishFunc        
+
+        self.rpc.processCluster(pc)
         
         pass
     

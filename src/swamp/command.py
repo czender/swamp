@@ -15,7 +15,7 @@ import copy
 import cPickle as pickle
 from fnmatch import filter as fnfilter
 from glob import glob as globglob
-from operator import add as opadd
+import operator
 import os
 import re
 
@@ -119,19 +119,23 @@ class Command:
 
     pass # end of Command class
 
-def pickleRestrict(cmd, restSet):
-    # restSet: obj supporting 'in' operator that can tell us if a
-    # reference can be preserved.
-    safecopy = copy.copy(cmd)
-    safecopy.parents = filter(lambda c: c in restSet,
-                              safecopy.parents)
-    safecopy.children = filter(lambda c: c in restSet,
-                               safecopy.children)
-    safecopy.factory = None
-    
-    return pickle.dumps(safecopy)
-
+def picklableList(cmdList):
+    # copy objs
+    newc = map(lambda c: (c, copy.copy(c)), cmdList)
+    cdict = dict(newc)
+    def fixup(ref):
+        if ref in cdict:
+            return cdict[ref]
+        return None
+    # convert refs
+    for c,n in newc:
+        n.parents = filter(operator.truth, map(fixup, n.parents))
+        n.children = filter(operator.truth, map(fixup, n.children))
+        delattr(n, 'factory')
+    return (cdict, map(lambda x: x[1], newc))
+                
 def unpickle(pickled):
+    # Put fixup code here.
     return pickle.loads(pickled)
 
 class CommandFactory:
@@ -241,7 +245,7 @@ class CommandFactory:
                    inouts, referenceLineNum):
         # first, reassign inputs and outputs.
         scriptouts = inouts[1]
-        newinputs = reduce(opadd, map(self.mapInput, inouts[0]))
+        newinputs = reduce(operator.add, map(self.mapInput, inouts[0]))
         newoutputs = map(self.mapOutput, inouts[1])
         inouts = (newinputs, newoutputs)
 

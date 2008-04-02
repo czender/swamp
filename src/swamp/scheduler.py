@@ -302,7 +302,7 @@ class NewParallelDispatcher:
         if fail:
             origline = ' '.join([cmd.cmd] + map(lambda t: ' '.join(t), cmd.argList) + cmd.leftover)
             s = "Bad return code %s from cmdline %s %d outs=%s" % (
-                code, origline, cmd.referenceLineNum, str(cmd.outputs))
+                "", origline, cmd.referenceLineNum, str(cmd.outputs))
             log.error(s)
             # For nicer handling, we should find the original command line
             # and pass it back as the failing line (+ line number)
