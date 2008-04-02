@@ -14,6 +14,7 @@
 # Python dependencies:
 from collections import deque
 import copy
+import cPickle as pickle
 from itertools import imap
 import operator
 
@@ -113,14 +114,24 @@ class CommandCluster:
                       map(lambda cmd: f.issuperset(cmd.parents),
                           self.roots),
                       True)
-    def pickleSelf(self, pickleFunc):
+    def pickleSelf(self, listSanitize):
         # Shallow copy myself
         # What we need to do is to isolate the cluster from troublesome
         # outside references, and then call the normal command pickler.
 
         c = copy.copy(self)
+        map(lambda a: delattr(c, a),
+            filter(lambda a: hasattr(c, a),
+                   ['parentCmds', 'parents', 'children', 'childCmds']))
+
         # Replace cmd list with 'safe' cmds
-        c.cmds = map(pickleFunc, c.cmds)
+        (cdict, newc) = listSanitize(c.cmds)
+        c.cmds = newc
+        pickle.dumps(newc)
+        print dir(c)
+        # convert root list
+        c.roots = map(lambda cm: cdict[cm], c.roots)        
+
         return pickle.dumps(c)
 
     def _computeExtDepNodes(self):
@@ -144,9 +155,8 @@ class CommandCluster:
         return len(self.cmds)
 
 def unpickleCluster(pickled, cmdUnpickle):
+    # Fixup is probably not needed.
     c = pickle.loads(pickled)
-    c.cmds = set(map(cmdUnpickle, c.cmds))
-    c._computeExtDepNodes()
     return c
 
 class PlainPartitioner:
