@@ -10,7 +10,8 @@ execution - contains code related to executing commands
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
 from heapq import * # for minheap implementation
-import itertools
+from itertools import imap, izip
+
 import inspect # for debugging
 import math
 import os
@@ -19,6 +20,7 @@ import random
 import time
 import threading
 
+import urllib
 import urllib2
 
 # for working around python bug http://bugs.python.org/issue1628205
@@ -296,7 +298,7 @@ class LocalExecutor:
         map(lambda c: self._enqueue(c,cluster), enq)
         
         # report results
-        self._touchUrl(cmd.callbackUrl[0])
+        self._touchUrl(cmd.callbackUrl[0], cmd.actualOutputs)
         if len(cluster.exec_finishedCmds) == len(cluster.cmds):
             # call cluster graduation.
             func = self.runningClusters.pop(cluster)
@@ -304,14 +306,18 @@ class LocalExecutor:
             self.finishedClusters.add(cluster)
         self.stateLock.release()
         
-    def _touchUrl(self, url):
+    def _touchUrl(self, url, actualOutputs):
         if isinstance(url, type(lambda : True)):
-            print "calling!"
-            return url()
+            return url(None)
         try:
-            f = urllib2.urlopen(url)
+            print "calling!", url
+            data = urllib.urlencode(dict(izip(actualOutputs,
+                                              imap(self.config.serverUrlFromFile,
+                                                   actualOutputs))))
+            
+            f = urllib2.urlopen(url, data)
             f.read() # read result, discard for now
-        except:
+        except KeyError:
             return False
         return True
     
@@ -330,7 +336,7 @@ class LocalExecutor:
         print "dispatching", cluster, len(cluster)
         if registerFunc:
             for cmd in cluster:
-                urls = registerFunc(cmd, lambda c,f: None, self, True)
+                urls = registerFunc(cmd, lambda c,f,cu: None, self, True)
                 cmd.callbackUrl = urls
         print "adding cluster",cluster
         self.runningClusters[cluster] = finishFunc
@@ -413,7 +419,7 @@ class LocalExecutor:
         hosted = filter(lambda f: f in self.actual, files)
         
         # need to map to actual locations first.
-        mappedfiles = itertools.imap(self.filemap.mapReadFile, files)
+        mappedfiles = imap(self.filemap.mapReadFile, files)
         map(self.actual.pop, hosted)
 
         return self._clearFiles(mappedfiles)
@@ -468,8 +474,12 @@ class NewRemoteExecutor:
     
     def dispatch(self, cluster, registerFunc, finishFunc):
         
-        funcs = map(lambda c: registerFunc(c, lambda : self._gradCmd(c, cluster),
-                                   self, False), cluster.cmds)
+        funcs = map(lambda c:
+                    setattr(c,
+                            'callbackUrl',
+                            registerFunc(c, lambda cm,f,cu: self._graduateCmd(c, cluster, f,cu),
+                                         self, False)), cluster.cmds)
+
         
         # Take the cluster, dispatch it
         # Pass the cluster, including its commands
@@ -502,16 +512,31 @@ class NewRemoteExecutor:
         """files: iterable of logical filenames to discard"""
         pass
 
-    def _graduateCmd(self, cmd, cluster):
+    def _graduateCmd(self, cmd, cluster, fail, custom):
         # Cluster callback needs to passthrough this object,
         # so that we know when a cluster is finished, otherwise
         # we can't mark ourselves as needing work.
         # Alternatively, "need for work" can be defined by polling
         # and checking some mix of processing load and queue length.
+
+        
+        #if fail:
+            # FIXME: Do the right thing when things fail
+            #pass
+        # handle actualOutputs
+        print "graduating with custom=",custom
+        if False:
+            cmd.actualOutputs = []
+            log.debug("adding %s from %s" % (str(outputs), str(rToken)))
+            for x in outputs:
+                self._addFinishOutput(x[0],x[1])
+                cmd.actualOutputs.append((x[0],x[1], x[2]))
+        
+        # Do cluster bookkeeping    
         cluster.exec_finishCount += 1
         if cluster.exec_finishCount == len(cluster.cmds):
             cluster.exec_finishFunc()
-            self.runningClusters.pop(cluster)
+            self.runningClusters.discard(cluster) #discard supresses errors.
             self.finishedClusters.add(cluster)
         pass
         

@@ -46,27 +46,45 @@ class LaunchThread(threading.Thread):
 class MoveMeCallbackResource(tResource.Resource):
     # should inherit twisted.web.resource.Resource
     # if we override init, we need to explicitly call parent constructor
-    def __init__(self):
-        #self.hello
+    def __init__(self, config):
+        tResource.Resource.__init__(self)
+        self.config = config
+        self.urlTable = {}
+        self.prefix = "http://localhost:8070/worker/"
+        config.callback = self # put myself in the config as callback
         pass
-    #def __init__(self, urlhandler):
-     #   self.urlhandler = urlhandler
-        #     def getChild(self, name, request):
-        #         if name == '':
-        #             return self
-        #         return Resource.getChild(
-        #             self, name, request)
     def getChild(self, path, request):
         # getchild is necessary to use numbered syntax.
         return self
     def render_GET(self, request):
         # here, we should check the handler to do the right thing.
-        key = "&".join(request.prepath)
-        if key in self.urlTable:
-            return self.urlTable[key]
+        key = request.prepath[1]
+        url = self.prefix + key
+        #if key in self.urlTable:
+        #    return self.urlTable[key]
+        try:
+            print "urltable has url %s ?" %url, self.urlTable.has_key(url)
+            self.urlTable[url](request.args) # Perform the callback.
+            print "callback ok"
+        except KeyError:
+            return "<html>Unsuccessful call <br/>prepath %s <br/> postpath %s<br/> args %s</html> "% (request.prepath, request.postpath, request.args)
         return """<html>
-      Hello, world! I am located at %r. and you requested
-    </html>""" % (request.prepath)
+      Hello, world! I am located at %r. and you requested %s
+      Urltable has %s
+    </html>""" % (request.prepath, key, str(self.urlTable))
+    def registerEvent(self, func):
+        # Assign a url. Do we care that this exposes the object ID?
+        key = str(id(func)) 
+        url = self.prefix + key
+        self.urlTable[url] = func
+        return url
+    def unregisterEvent(self, url):
+        try:
+            self.urlTable.remove(url)
+        except:
+            log.error("Tried to remove non-registered callback %s" % url)
+        pass
+        
 
 class StandardJobManager:
     """StandardJobManager manages submitted tasks dispatched by this system.
@@ -112,6 +130,8 @@ class StandardJobManager:
     def _setupMaster(self):
         self._workers = {}
         self._nextWorkerToken = 1
+        self.config.serverUrlFromFile = self._actualToPub
+
 
     def _setupVariablePreload(self, interface):
         interface.updateVariablePreload({
@@ -270,7 +290,7 @@ class StandardJobManager:
     def startTwistedServer(self):
         self.config.serviceInspectPath = "inspect"
         custom = [("inspect", inspector.newResource(self.config)),
-                  ("worker", MoveMeCallbackResource())]
+                  ("worker", MoveMeCallbackResource(self.config))]
         self.config.runtimeJobManager = self
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,

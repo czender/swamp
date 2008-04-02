@@ -176,7 +176,7 @@ class JobManager:
         self.token = 0
         self.tokenLock = threading.Lock()
         self._modeSetup("worker")
-                               
+        self.config.serverUrlFromFile = self.actualToPub
         pass
 
     def _modeSetup(self, mode):

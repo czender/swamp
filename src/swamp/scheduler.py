@@ -149,6 +149,7 @@ class NewParallelDispatcher:
         self.targetCount = 0
         self.result = None
         self.resultEvent = threading.Event()
+        self.listener = config.callback
         pass
 
     def _dispatchRoots(self):
@@ -201,14 +202,14 @@ class NewParallelDispatcher:
         Alternatively, we can let the thread babysit the remote
         operation and detect faults.  
         """
+        funcs = [lambda custom: self._graduate(cmd, gradHook, executor, False, custom),
+                 lambda custom: self._graduate(cmd, gradHook, executor, True, custom)]
         if isLocal:
-            return (lambda : self._graduate(cmd, gradHook, executor, False),
-                    lambda : self._graduate(cmd, gradHook, executor, True))
+            return funcs
         else:
-            print "Uh oh, I don't know how to do this yet"
-            #self.listener.addCallback(gradHook)
-            
-            return "http://localhost:8070"
+            urls = map(self.config.callback.registerEvent, funcs)
+            print "made callback urls %s" % str(urls)
+            return urls
 
     def _unregisterCallback(self, url):
         """delete a callback.  Generally, each callback is supposed to be executed at most once.
@@ -291,11 +292,11 @@ class NewParallelDispatcher:
                           lambda : self.graduateCluster(cluster, executor))
 
         
-    def _graduate(self, cmd, gradHook, executor, fail):
+    def _graduate(self, cmd, gradHook, executor, fail, custom):
         #The dispatcher isn't really in charge of dependency
         #checking, so it doesn't really need to know when things
         #are finished.
-        gradHook(cmd,fail) # Service the hook function first (better later?)
+        gradHook(cmd, fail, custom) # Service the hook function first (better later?)
         # this is the executor's hook
         #print "graduate",cmd.cmd, cmd.argList, "total=",self.count, fail
         self.count += 1
