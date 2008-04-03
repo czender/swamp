@@ -276,6 +276,7 @@ class LocalExecutor:
 
         for x in cmd.actualOutputs:
             self.actual[x[0]] = x[1]
+            print "added",x," to executor.actual"
         if cluster.exec_outputPatch:
             cmd.actualOutputs = map(lambda t:
                                     (t[0], cluster.exec_outputPatch(t[1]),
@@ -294,6 +295,12 @@ class LocalExecutor:
             #print "ready?", ready
             if ready:
                 newready.add(c)
+                partialprod =  map(lambda f: f in self.actual, c.inputs)
+                print "Are ", c.inputs, "in", self.actual.keys(), partialprod, id(c)
+
+                if not reduce(lambda a,b: a and b, map(lambda p: p in self.finished,  c.parents), True):
+                    print id(c), "----CONFLICT--- files 'ready' but parents not", id(cmd)
+
         # Protect enqueuing since threads can race here
         # (2 parents-> 1 child)
         self.cmdsEnqueuedLock.acquire()
@@ -399,7 +406,15 @@ class LocalExecutor:
         # args=arglist, stdout=some filehandle with output,
         # stderrr= samefilehandle)
         return code
-        
+
+    def _verifyLogicals(self, logicals):
+        if len(logicals) == 0:
+            return []
+        for f in logicals:
+            while f == self.fetchFile:
+                time.sleep(0.1)
+        return []
+      
     def _fetchLogicals(self, logicals, srcs):
         fetched = []
         if len(logicals) == 0:
@@ -537,7 +552,7 @@ class NewRemoteExecutor:
         cluster.exec_finishCount = 0
         # Set finishing function for the cluster
         cluster.exec_finishFunc = finishFunc        
-
+        print "-------send cluster inputs", cluster.exec_inputLocs
         self.rpc.processCluster(pc)
         
         pass
@@ -548,9 +563,13 @@ class NewRemoteExecutor:
     def needsWork(self):
         return len(self.runningClusters) < self.slots
 
-    def discardFilesIfHosted(self, files):
-        """files: iterable of logical filenames to discard"""
-        pass
+    def discardFilesIfHosted(self, fileList):
+        """fileList: iterable of logical filenames to discard"""
+        hosted = filter(lambda f: f in self.actual, fileList)
+        if hosted:
+            log.debug("req discard of %s on %s" %(str(hosted), self.url))
+            map(self.actual.pop, hosted)
+            self.rpc.discardFiles(hosted)
 
     def _graduateCmd(self, cmd, cluster, fail, custom):
         # Cluster callback needs to passthrough this object,
@@ -584,6 +603,7 @@ class NewRemoteExecutor:
         # Do cluster bookkeeping    
         cluster.exec_finishCount += 1
         if cluster.exec_finishCount == len(cluster.cmds):
+            print "init graduation"
             cluster.exec_finishFunc()
             self.runningClusters.discard(cluster) #discard supresses errors.
             self.finishedClusters.add(cluster)

@@ -18,6 +18,8 @@ from swamp.mapper import FileMapper
 # Standard Python imports
 import cPickle as pickle
 import getopt
+from itertools import izip,imap
+from operator import itemgetter
 import logging
 import os
 import sys
@@ -102,12 +104,19 @@ class StandardJobManager:
                                   config.execSourcePath,
                                   config.execResultPath,
                                   config.execResultPath)
-        self.resultExportPref = "http://%s:%d/%s/" % (config.serviceHostname,
-                                                      config.servicePort,
-                                                      config.servicePubPath)
 
         self.publishedPaths = [(config.servicePubPath,
-                                config.execResultPath)]
+                                config.execResultPath),
+                               (config.servicePubPath + "s",
+                                config.execScratchPath),
+                               (config.servicePubPath + "b",
+                                config.execBulkPath)]
+        self.exportTemplate = lambda s: "http://%s:%d/%s/" % (config.serviceHostname,
+                                                              config.servicePort,
+                                                              s)
+        self.exportPrefix = map( self.exportTemplate, 
+                                 map(itemgetter(0), self.publishedPaths))
+
         self.publishedFuncs = [self.reset,
                                self.newScriptedFlow, self.discardFlow,
                                self.pollState, self.pollOutputs,
@@ -258,12 +267,15 @@ class StandardJobManager:
 
     def _actualToPub(self, f):
         log.debug("++"+f +self.config.execResultPath)
-        relative = f.split(self.config.execResultPath + os.sep, 1)
-        if len(relative) < 2:
-            log.info("Got request for %s which is not available"%f)
-            return self.resultExportPref
-        else:
-            return self.resultExportPref + relative[1]
+        for ((ppath, ipath),pref) in izip(self.publishedPaths,
+                                          self.exportPrefix):
+            relative = f.split(ipath + os.sep, 1)
+            if len(relative) >= 2:
+                return pref + relative[1]
+            
+        log.info("Got request for %s which is not available"%f)
+        return self.exportPrefix[0]
+
     
     def pollOutputs(self, token):
         assert token in self.jobs
