@@ -136,7 +136,7 @@ class NewParallelDispatcher:
         self.finished = set()
         self.okayToReap = True
         # not okay to declare file death until everything is parsed.
-        self.execLocation = {} # logicalout -> executor
+        self.execLocation = {} # logicalout -> [(executor,url),...]
         #self.sleepTime = 0.100 # originally set at 0.200
         #self.running = {} # (e,etoken) -> cmd
         #self.result = None
@@ -251,6 +251,7 @@ class NewParallelDispatcher:
         cands = filter(lambda c: (c not in self.readyClusters)
                        and (c not in self.qClusters),
                        cluster.children)
+        print "am I idle?", self.idle(), self.targetCount, self.count
         rp += "I graduated a cluster! " + str(id(cluster)) + "\n"
         newReady = filter(lambda c: c.ready(self.finished), cands)
         # If we made a cluster ready, dispatch it.
@@ -274,7 +275,7 @@ class NewParallelDispatcher:
         if c: 
             self._dispatchCluster(c, executor)
 
-        #print rp
+
         if self.idle():
             self.result = True 
             self.resultEvent.set()
@@ -342,10 +343,14 @@ class NewParallelDispatcher:
                 self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
                                          cmd.inputsWithParents))
             e = executor # token is (executor, etoken)
-            map(lambda o: appendList(self.execLocation, o, executor), cmd.outputs)
+            map(lambda o: appendList(self.execLocation, o[0], (executor,o[1])),
+                cmd.actualOutputs)
             
 
             self.gradHook(cmd)
+            if self.idle():
+                self.result = True 
+                self.resultEvent.set()
             return
 
     def isDead(self, file, consumingCmd):
@@ -371,28 +376,7 @@ class NewParallelDispatcher:
     def fileLoc(self, file):
         """ return url of logical output file"""
         execs = self.execLocation[file]
-        if len(execs) > 0:
-            try:
-                return execs[0].actual[file] # return the first one
-            except KeyError:
-                i = 0
-                emap = {}
-                msg = ["#Key error for %s" % (file),
-                       "badkey = '%s'" %(file)]
-                for e in self.executors:
-                    nicename = "e%dactual" % i
-                    emap[e] = nicename
-                    msg.append("%s = %s" %(nicename, str(e.actual)))
-                    i += 1
-                msg.append("#Key %s maps to %s" %(file,
-                                                 map(lambda e: emap[e],
-                                                     self.execLocation[file])))
-                locstr = str(self.execLocation)
-                for (k,v) in emap.items():
-                    locstr = locstr.replace(str(k),v)
-                msg.append("eLoc = " + locstr) 
-                open("mykeyerror.py","w").write("\n".join(msg))
-                log.error("writing debug file to mykeyerror.py")
-                execs[0].actual[file] # re-raise error.
+        if execs:
+            return execs[0][1] # Return first location's url.
         else:
             return None
