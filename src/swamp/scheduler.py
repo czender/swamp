@@ -208,7 +208,6 @@ class NewParallelDispatcher:
             return funcs
         else:
             urls = map(self.config.callback.registerEvent, funcs)
-            print "made callback urls %s" % str(urls)
             return urls
 
     def _unregisterCallback(self, url):
@@ -251,8 +250,6 @@ class NewParallelDispatcher:
         cands = filter(lambda c: (c not in self.readyClusters)
                        and (c not in self.qClusters),
                        cluster.children)
-        print "am I idle?", self.idle(), self.targetCount, self.count
-        rp += "I graduated a cluster! " + str(id(cluster)) + "\n"
         newReady = filter(lambda c: c.ready(self.finished), cands)
         # If we made a cluster ready, dispatch it.
 
@@ -261,14 +258,11 @@ class NewParallelDispatcher:
             c = newReady[0]
             # Then, put the remaining clusters on the ready list
             self.readyClusters.update(newReady[1:])
-            rp +=  "clusFrom parent: %s\n" % str(id(cluster))
         elif self.readyClusters:
             # or dispatch from already-ready
             c = self.readyClusters.pop()
-            rp +=  "clusFrom readylist\n"
         elif self.rootClusters:
             c = self.rootClusters.next()
-            rp +=  "clusFrom ROOT\n"
         if c:
             self.qClusters.add(c) # Ugly.
         self.gradLock.release()
@@ -277,6 +271,7 @@ class NewParallelDispatcher:
 
 
         if self.idle():
+            self._cleanupExecs()
             self.result = True 
             self.resultEvent.set()
         pass
@@ -324,9 +319,6 @@ class NewParallelDispatcher:
             #self.finished[cmd] = code
             log.debug("graduating %s %d" %(cmd.cmd,
                                            cmd.referenceLineNum))
-            print "graduating %s %d %s" %(cmd.cmd,
-                                       cmd.referenceLineNum,
-                                       id(cmd))
             self.finished.add(cmd)
             #print "New Finished set:", len(self.finished),"\n","\n".join(map(lambda x:x.original,self.finished))
             # Are any clusters made ready?
@@ -349,6 +341,7 @@ class NewParallelDispatcher:
 
             self.gradHook(cmd)
             if self.idle():
+                self._cleanupExecs()
                 self.result = True 
                 self.resultEvent.set()
             return
@@ -380,3 +373,8 @@ class NewParallelDispatcher:
             return execs[0][1] # Return first location's url.
         else:
             return None
+
+    def _cleanupExecs(self):
+        for e in self.executors:
+            e.discardAllHosted()
+            

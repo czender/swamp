@@ -14,7 +14,10 @@ __author__ = "Daniel L. Wang <wangd@uci.edu>"
 SwampCoreVersion = "$Id$"
 
 # Python imports
+import itertools
+from itertools import izip, imap
 import logging
+from operator import itemgetter
 import os
 import shutil
 import time
@@ -30,8 +33,7 @@ from swamp.config import Config
 from swamp.parser import Parser
 from swamp.command import CommandFactory
 from swamp import log
-from swamp.execution import NewRemoteExecutor as RemoteExecutor
-#from swamp.execution import RemoteExecutor
+from swamp.execution import RemoteExecutor
 from swamp.mapper import LinkedMap
 from swamp.scheduler import Scheduler
 import swamp.statistics as statistics
@@ -119,19 +121,30 @@ class SwampTask:
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)
         log.debug("filtered is %s" %(str(files)))
+        if files and (len(files[0]) > 3):
+            localfiles = imap(itemgetter(3), files)
+        else:
+            localfiles = itertools.repeat(None)
+        #Unmap local files.
+#        map(self.outMap.discardLogical,
+ #           imap(itemgetter(0), ifilter(lambda t: t[1], izip(ft,localfiles))))
         targetfiles = map(lambda ft: (ft[0], ft[1],
                                       self.outMap.mapWriteFile(ft[0])),
                           files)        
         # fork a thread for this in the future.
-        self._publishHelper(targetfiles)
+        self._publishHelper(izip(targetfiles, localfiles))
 
 
     def _publishHelper(self, filetuples):
         for t in filetuples:
             log.debug("publish " + str(t))
-            actual = t[1]
-            target = t[2]
-            if isRemote(actual):
+            t0 = t[0]
+            actual = t0[1]
+            target = t0[2]
+            local = t[1]
+            if local:
+                actual = local
+            if (not local) and isRemote(actual):
                 #download, then add to local map (in db?)
                 #log.debug("Download start %s -> %s" % (actual, target))
                 urllib.urlretrieve(actual, target)
