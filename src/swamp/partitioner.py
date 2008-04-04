@@ -128,7 +128,6 @@ class CommandCluster:
         (cdict, newc) = listSanitize(c.cmds)
         c.cmds = newc
         pickle.dumps(newc)
-        print dir(c)
         # convert root list
         c.roots = map(lambda cm: cdict[cm], c.roots)        
 

@@ -299,7 +299,7 @@ class JobManager:
     def processCluster(self, pCluster):
         # cluster is a pickled cluster of commands
         c = unpickleCluster(pCluster, unpickleCommand)
-        print "----recv cluster, inputs", c.exec_inputLocs
+        #print "----recv cluster, inputs", c.exec_inputLocs
         self.localExec.dispatch(c, None, lambda : None,
                                 self.config.serverUrlFromFile)
         
@@ -372,10 +372,10 @@ class JobManager:
     def discardFiles(self, fList):
         log.debug("Bulk discard "+str(fList))
         #for f in fList:
+        
         for i in range(len(fList)):
             self.fileMapper.discardLogical(fList[i])
         self.localExec.discardFilesIfHosted(fList)
-        #map(self.fileMapper.discardLogical, fList)
 
     def ping(self):
         return "PONG %f" %time.time()

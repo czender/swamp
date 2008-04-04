@@ -10,7 +10,7 @@ execution - contains code related to executing commands
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 
 from heapq import * # for minheap implementation
-from itertools import imap, izip
+from itertools import imap, izip, chain
 
 import inspect # for debugging
 import math
@@ -169,13 +169,11 @@ class LocalExecutor:
 
     def _process(self):
         """Main loop for the pool worker"""
-        print "thread birth"
         while self.alive:
             ctuple = self.cmdQueue.get()
-            if ctuple: print "thread pulled",id(ctuple[0])
+
             if not self.alive: # still alive?
                 break
-            #print "dispatching cmdtuple",ctuple
             (cmd,clus) = ctuple
             code = self._launch(cmd, locations=clus.exec_inputLocs)
             if code != 0:
@@ -231,7 +229,6 @@ class LocalExecutor:
 
     def _queueAllReady(self):
         while self._roots:
-            print "kickstart"
             self._enqueue(self._roots.pop())
 
             
@@ -274,14 +271,13 @@ class LocalExecutor:
         cluster.exec_finishedCmds.add(cmd)
         self.finished.add(cmd) ## DEBUG. REMOVE later.
 
-        for x in cmd.actualOutputs:
+        for x in chain(cmd.actualOutputs, cmd.rFetchedFiles):
             self.actual[x[0]] = x[1]
-            print "added",x," to executor.actual"
         if cluster.exec_outputPatch:
             cmd.actualOutputs = map(lambda t:
                                     (t[0], cluster.exec_outputPatch(t[1]),
-                                            os.stat(t[1]).st_size),
-                                    cmd.actualOutputs)
+                                            os.stat(t[1]).st_size,t[1]),
+                                    chain(cmd.actualOutputs, cmd.rFetchedFiles))
         log.debug("Local graduation with outputs: %s" %(str(cmd.actualOutputs)))
         # put children on root queue if ready
         newready = set()
@@ -295,10 +291,10 @@ class LocalExecutor:
             #print "ready?", ready
             if ready:
                 newready.add(c)
-                partialprod =  map(lambda f: f in self.actual, c.inputs)
-                print "Are ", c.inputs, "in", self.actual.keys(), partialprod, id(c)
-
+                
                 if not reduce(lambda a,b: a and b, map(lambda p: p in self.finished,  c.parents), True):
+                    partialprod =  map(lambda f: f in self.actual, c.inputs)
+                    print "Are ", c.inputs, "in", self.actual.keys(), partialprod, id(c)
                     print id(c), "----CONFLICT--- files 'ready' but parents not", id(cmd)
 
         # Protect enqueuing since threads can race here
@@ -322,7 +318,6 @@ class LocalExecutor:
         if isinstance(url, type(lambda : True)):
             return url(None)
         try:
-            print "calling!", url
             pkg = dict([(x[0],(x[1],x[2])) for x in actualOutputs])
             data = urllib.urlencode(pkg)
             f = urllib2.urlopen(url + "?"+data)
@@ -345,12 +340,11 @@ class LocalExecutor:
         # finishFunc is a function to call when the cluster is finished.
         # outputPatch= f:pathname -> patchedNameForCommand
         # dispatch(...) needs to be 'nonblocking'
-        print "dispatching", cluster, len(cluster)
         if registerFunc:
             for cmd in cluster:
                 urls = registerFunc(cmd, lambda c,f,cu: None, self, True)
                 cmd.callbackUrl = urls
-        print "adding cluster",cluster
+
         self.runningClusters[cluster] = finishFunc
         cluster.exec_finishedCmds = set()
         cluster.exec_outputPatch = outputPatch
@@ -380,6 +374,7 @@ class LocalExecutor:
         # make sure our inputs are ready
         missing = filter(lambda f: not self.filemap.existsForRead(f),
                          cmd.inputs)
+        cmd.rFetchedFiles = []
         if locations:
             cmd.inputSrcs = locations
         if missing:
@@ -471,13 +466,21 @@ class LocalExecutor:
     def discardFilesIfHosted(self, files):
         # We tolerate being called with files we don't host.
         hosted = filter(lambda f: f in self.actual, files)
-        
+        self._discardHosted(hosted)
+
+        return 
+
+    def discardAllHosted(self):
+        return self._discardHosted(self.actual.keys())
+
+    def _discardHosted(self, files):
         # need to map to actual locations first.
-        mappedfiles = imap(self.filemap.mapReadFile, files)
-        map(self.actual.pop, hosted)
+        mappedfiles = map(self.filemap.mapReadFile, files)
+        map(self.filemap.discardLogical, files)
+        map(self.actual.pop, files)
 
-        return self._clearFiles(mappedfiles)
-
+        
+        
     def _clearFiles(self, filelist):
         for f in filelist:
             if os.access(f, os.F_OK):
@@ -501,7 +504,7 @@ class LocalExecutor:
             
     pass
 
-class NewRemoteExecutor:
+class RemoteExecutor:
     def __init__(self, url, slots):
         """ url: SOAP url for SWAMP slave
             slots: max number of running slots
@@ -552,7 +555,6 @@ class NewRemoteExecutor:
         cluster.exec_finishCount = 0
         # Set finishing function for the cluster
         cluster.exec_finishFunc = finishFunc        
-        print "-------send cluster inputs", cluster.exec_inputLocs
         self.rpc.processCluster(pc)
         
         pass
@@ -567,9 +569,20 @@ class NewRemoteExecutor:
         """fileList: iterable of logical filenames to discard"""
         hosted = filter(lambda f: f in self.actual, fileList)
         if hosted:
-            log.debug("req discard of %s on %s" %(str(hosted), self.url))
-            map(self.actual.pop, hosted)
-            self.rpc.discardFiles(hosted)
+            self._discardHosted(hosted)
+
+    def discardAllHosted(self):
+        return self._discardHosted(self.actual.keys())
+
+    def _discardHosted(self, files):
+        log.debug("req discard of %s on %s" %(str(files), self.url))
+        map(self.actual.pop, files)
+        self.rpc.discardFiles(files)
+
+        
+
+
+
 
     def _graduateCmd(self, cmd, cluster, fail, custom):
         # Cluster callback needs to passthrough this object,
@@ -603,7 +616,6 @@ class NewRemoteExecutor:
         # Do cluster bookkeeping    
         cluster.exec_finishCount += 1
         if cluster.exec_finishCount == len(cluster.cmds):
-            print "init graduation"
             cluster.exec_finishFunc()
             self.runningClusters.discard(cluster) #discard supresses errors.
             self.finishedClusters.add(cluster)
@@ -611,176 +623,6 @@ class NewRemoteExecutor:
         
         
 
-class RemoteExecutor:
-    def __init__(self, url, slots):
-        """ url: SOAP url for SWAMP slave
-            slots: max number of running slots"""
-        self.url = url
-        self.slots = slots
-        self.rpc = SOAPProxy(url)
-        log.debug("reset slave at %s with %d slots" %(url,slots))
-        try:
-            self.rpc.reset()
-        except Exception, e:
-            import traceback, sys
-            tb_list = traceback.format_exception(*sys.exc_info())
-            msg =  "".join(tb_list)
-            raise StandardError("can't connect to "+url+str(msg))
-        self.running = {}
-        self.finished = {}
-        self.token = 100
-        self.sleepTime = 0.2
-        self.actual = {}
-        self.pollCache = []
-        self.cmds = {}
-        pass
-
-    def busy(self):
-        # soon, we should put code here to check for process finishes and
-        # cache their results.
-        return len(self.running) >= self.slots
-    
-    def launch(self, cmd, locations=[]):
-        cmd.inputSrcs = locations
-        log.debug("launch %s %d to %s" %(cmd.cmd,
-                                         cmd.referenceLineNum, self.url))
-        remoteToken = self.rpc.slaveExec(cmd.pickleNoRef())
-        self.token += 1        
-        self.running[self.token] = remoteToken
-        self.cmds[self.token] = cmd  # save until graduation                
-        return self.token
-
-    def discard(self, token):
-        assert token in self.finished
-        self.finished.pop(token)
-        # consider releasing files too.
-
-    def discardFile(self, file):
-        log.debug("req discard of %s on %s" %(file, self.url))
-        self.actual.pop(file)
-        self.rpc.discardFile(file)
-
-    def discardFilesIfHosted(self, fileList):
-        hosted = filter(lambda f: f in self.actual, fileList)
-        if hosted:
-            return self.discardFiles(hosted)
-        
-
-    def discardFiles(self, fileList):
-        log.debug("req discard of %s on %s" %(str(fileList), self.url))
-        map(self.actual.pop, fileList)
-        self.rpc.discardFiles(fileList)
-
-    def pollAny(self):
-        if self.pollCache:
-            return self.pollCache.pop()
-        f = self.pollAll()
-        if f:
-            top = f.pop()
-            self.pollCache += f
-            return top
-        return None
-
-    def pollAll(self):
-        lTokens = []
-        rTokens = []
-        fins = []
-        for (token, rToken) in self.running.items():
-            lTokens.append(token)
-            rTokens.append(rToken)
-
-        while True:
-            try:
-                states = self.rpc.pollStateMany(rTokens)
-                break
-            except socket.error, err:
-                # workaround buggy python sockets: doesn't handle EINTR
-                # http://bugs.python.org/issue1628205
-                if err[0] == EINTR:
-                    continue
-                raise
-            
-        for i in range(len(lTokens)):
-            if states[i] is not None:
-                self._graduate(lTokens[i], states[i])
-                fins.append((lTokens[i], states[i]))
-        if fins:
-            return fins
-        return None
-    
-    def waitAny(self):
-        """wait for something to happen. better be something running,
-        otherwise you'll wait forever."""
-        while True:
-            r = self.pollAny()
-            if r is not None:
-                return r
-            time.sleep(self.sleepTime)
-        pass
-
-    def poll(self, token):
-        if token in self.finished:
-            return self.finished[token]
-        elif token in self.running:
-            state = self._pollRemote(self.running[token])
-            if state is not None:
-                self._graduate(token, state)
-        else:
-            raise StandardError("RemoteExecutor.poll: bad token")
-
-    def _pollRemote(self, remoteToken):
-        state = self.rpc.pollState(remoteToken)
-        if state is not None:
-            if state != 0:
-                log.error("slave %s error while executing" % self.url)
-        return state # always return, whether None, 0 or nonzero
-
-    def _addFinishOutput(self, logical, actual):
-        self.actual[logical] = actual
-
-    def _retryPollOutputs(self, token):
-        while True:
-            try:
-                outputs = self.rpc.pollOutputs(token)
-                break
-            except Exception, e:
-                log.error("Error in execution.py:self.rpc.pollOutputs-- error in SOAPpy/Client.py (retry in 2 seconds)")
-                time.sleep(2)
-                pass
-    def _graduate(self, token, retcode):
-        rToken = self.running.pop(token)
-        cmd = self.cmds.pop(token)
-        self.finished[token] = retcode
-        #outputs = self.rpc.actualOuts(rToken)
-        self._retryPollOutputs(rToken)
-        outputs = self.rpc.pollOutputs(rToken)
-        # where do i keep my commands?
-        cmd.actualOutputs = []
-        log.debug("adding %s from %s" % (str(outputs), str(rToken)))
-        for x in outputs:
-            self._addFinishOutput(x[0],x[1])
-            cmd.actualOutputs.append((x[0],x[1], x[2]))
-
-    def _waitForFinish(self, token):
-        """helper function"""
-        remoteToken = self.running[token]
-        while True:
-            state = self._pollRemote(remoteToken)
-            if state is not None:
-                return state
-            time.sleep(self.sleepTime) # sleep for a while.  need to tune this.
-        pass
-        
-    def join(self, token):
-        if token in self.running:
-            ret = self._waitForFinish(token)
-            self._graduate(token, ret)
-            return ret
-        elif token in self.finished:
-            return self.finished[token]
-        else:
-            raise StandardError("RemotExecutor.join: bad token")
-    pass # end class RemoteExecutor 
 
 
 ######################################################################

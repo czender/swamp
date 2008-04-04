@@ -266,7 +266,7 @@ class StandardJobManager:
                 
 
     def _actualToPub(self, f):
-        log.debug("++"+f +self.config.execResultPath)
+
         for ((ppath, ipath),pref) in izip(self.publishedPaths,
                                           self.exportPrefix):
             relative = f.split(ipath + os.sep, 1)
@@ -284,9 +284,6 @@ class StandardJobManager:
         outUrls = map(lambda f: (f[0], self._actualToPub( # make url from file
             task.outMap.mapReadFile(f[1]))), # find output localfile
                        outs) #start from logical outs.
-
-        #log.debug("polloutputs: outs "+str(outs))
-        #log.debug("polloutputs: outUrls "+str(outUrls))
 
         return outUrls
 

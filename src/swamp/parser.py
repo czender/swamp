@@ -954,7 +954,7 @@ class Parser:
             #print "xf",xf
             newone = self.Expr.ForHeading.parseString(xf)
             rr = newone["range"]
-            print "loop range is ",rr, type(rr)
+            #print "loop range is ",rr, type(rr)
             for val in rr:
                 evalContext.variableParser.varMap[varname] = val
                 iterations.extend(self._iterateLoop(evalContext))
