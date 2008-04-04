@@ -17,6 +17,7 @@ import math
 import os
 import Queue
 import random
+import subprocess
 import time
 import threading
 
@@ -386,15 +387,12 @@ class LocalExecutor:
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
 
-        # use errno-513-resistant method of execution.
-        code = None
-        while code is None:
-            try:
-                code = os.spawnv(os.P_WAIT, self.binaryFinder(cmd), cmdLine)
-            except OSError, e:
-                if not (e.errno == 513):
-                    raise
-                pass #retry on ERESTARTNOINTR
+        proc = subprocess.Popen(executable=self.binaryFinder(cmd),
+                         args=cmdLine,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT)
+        cmd.exec_output = proc.communicate()[0] #Save output (future use)
+        code = proc.returncode
         
         # consider:
         # exitcode=subprocess.call(executable=binPath,
