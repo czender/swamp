@@ -72,7 +72,7 @@ $(TAGSERVICEPATH):
 	echo "building tag --$(TAG)--"
 	mkdir -p $(SERVICE_DISTDIR)
 	svn export http://swamp.googlecode.com/svn/tags/$(TAG) $(SERVICE_DISTDIR)/tmp_buildtree
-	cp -r $(addprefix $(SERVICE_DISTDIR)/tmp_buildtree,$(SERVICEFILES_)) $(SERVICE_DISTDIR)
+	cp -r $(addprefix $(SERVICE_DISTDIR)/tmp_buildtree/,$(SERVICEFILES_)) $(SERVICE_DISTDIR)
 	cp -r $(SERVICE_DISTDIR)/tmp_buildtree/src/swamp $(SERVICE_DISTDIR)/swamp
 	rm -r $(SERVICE_DISTDIR)/tmp_buildtree
 	cd $(DISTDIR) && tar cjvf $(TAGSERVICETAR) swamp-service
