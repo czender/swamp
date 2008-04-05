@@ -73,10 +73,14 @@ class FileMapper:
             pass
 
     def discardLogical(self, f):
+        if f not in self.physical:
+            return
         p = self.physical.pop(f)
-        if os.access(p, os.F_OK):
-            os.unlink(p)
-            log.debug("Unlink OK: %s (%s)" %(f,p))
+        try:
+            if os.access(p, os.F_OK):
+                os.unlink(p)
+        except:
+            pass # ignore delete problems
         self.logical.pop(p)
 
     
