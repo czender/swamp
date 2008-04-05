@@ -17,6 +17,7 @@ import threading
 # (semi-) third-party module imports
 import SOAPpy
 
+
 # SWAMP imports 
 from swamp import log
 from swamp_common import *
@@ -28,7 +29,8 @@ from swamp.mapper import FileMapper
 # FIXME: reorg code to not need these two:
 from swamp.execution import LocalExecutor
 from swamp.execution import NcoBinaryFinder
-
+from swamp.partitioner import unpickleCluster
+from swamp.command import unpickle as unpickleCommand
 
 class LaunchThread(threading.Thread):
     def __init__(self, launchFunc, updateFunc):
@@ -174,7 +176,7 @@ class JobManager:
         self.token = 0
         self.tokenLock = threading.Lock()
         self._modeSetup("worker")
-                               
+        self.config.serverUrlFromFile = self.actualToPub
         pass
 
     def _modeSetup(self, mode):
@@ -194,8 +196,10 @@ class JobManager:
                                      self.config.execSourcePath,
                                      self.config.execScratchPath,
                                      self.config.execBulkPath)
-        self.localExec = LocalExecutor(NcoBinaryFinder(self.config),
-                                       self.fileMapper)
+        self.localExec = LocalExecutor("local",
+                                       NcoBinaryFinder(self.config),
+                                       self.fileMapper,
+                                       self.config.execLocalSlots)
         
         self._adjustHostnameFields()
         target = (self.config.masterUrl, self.config.masterAuth)
@@ -263,7 +267,7 @@ class JobManager:
                                             self.config.servicePort,
                                             self.config.serviceSoapPath)
 
-        self.publishedFuncs = [self.reset, self.slaveExec,
+        self.publishedFuncs = [self.reset, self.processCluster,
                                self.pollState, self.pollStateMany,
                                self.pollOutputs,
                                self.discardFile, self.discardFiles,
@@ -291,6 +295,14 @@ class JobManager:
         log.info("Reset requested")
         self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
+
+    def processCluster(self, pCluster):
+        # cluster is a pickled cluster of commands
+        c = unpickleCluster(pCluster, unpickleCommand)
+        #print "----recv cluster, inputs", c.exec_inputLocs
+        self.localExec.dispatch(c, None, lambda : None,
+                                self.config.serverUrlFromFile)
+        
         
     def slaveExec(self, pickledCommand):
         cf = CommandFactory(self.config)
@@ -360,12 +372,15 @@ class JobManager:
     def discardFiles(self, fList):
         log.debug("Bulk discard "+str(fList))
         #for f in fList:
+        
         for i in range(len(fList)):
             self.fileMapper.discardLogical(fList[i])
-        #map(self.fileMapper.discardLogical, fList)
+        self.localExec.discardFilesIfHosted(fList)
 
     def ping(self):
         return "PONG %f" %time.time()
+
+        
 
     def dangerousRestart(self, auth):
         # Think about what sort of checks we should do to prevent orphan
@@ -376,6 +391,7 @@ class JobManager:
 
     def grimReap(self):
         self.registerThread.active = False
+
 
     def listenTwisted(self):
         self.config.serviceInspectPath = "inspect"

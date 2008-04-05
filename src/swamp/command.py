@@ -15,7 +15,7 @@ import copy
 import cPickle as pickle
 from fnmatch import filter as fnfilter
 from glob import glob as globglob
-from operator import add as opadd
+import operator
 import os
 import re
 
@@ -31,7 +31,9 @@ from swamp import log
 
 # Command and CommandFactory do not have dependencies on NCO things.
 class Command:
-    """this is needed because we want to build a dependency tree."""
+    """this is needed because we want to build a dependency tree.
+    Notice: self.factory causes pickling problems: should delete before
+    pickling"""
 
     def __init__(self, cmd, argtriple, inouts, parents, referenceLineNum):
         self.cmd = cmd
@@ -72,8 +74,7 @@ class Command:
         safecopy.children = None
         safecopy.factory = None
         return pickle.dumps(safecopy)
-
-
+                
     # need to map all non-input filenames.
     # apply algorithm to find temps and outputs
     # then mark them as remappable.
@@ -117,7 +118,26 @@ class Command:
         # we'd like to do self.__cmp__ = self.cmpSched , but it breaks.
 
     pass # end of Command class
-        
+
+def picklableList(cmdList):
+    # copy objs
+    newc = map(lambda c: (c, copy.copy(c)), cmdList)
+    cdict = dict(newc)
+    def fixup(ref):
+        if ref in cdict:
+            return cdict[ref]
+        return None
+    # convert refs
+    for c,n in newc:
+        n.parents = filter(operator.truth, map(fixup, n.parents))
+        n.children = filter(operator.truth, map(fixup, n.children))
+        delattr(n, 'factory')
+    return (cdict, map(lambda x: x[1], newc))
+                
+def unpickle(pickled):
+    # Put fixup code here.
+    return pickle.loads(pickled)
+
 class CommandFactory:
     """this is needed because we want to:
     a) connect commands together
@@ -225,7 +245,7 @@ class CommandFactory:
                    inouts, referenceLineNum):
         # first, reassign inputs and outputs.
         scriptouts = inouts[1]
-        newinputs = reduce(opadd, map(self.mapInput, inouts[0]))
+        newinputs = reduce(operator.add, map(self.mapInput, inouts[0]))
         newoutputs = map(self.mapOutput, inouts[1])
         inouts = (newinputs, newoutputs)
 

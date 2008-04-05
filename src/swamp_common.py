@@ -6,24 +6,20 @@
 # Copyright (c) 2007, Daniel L. Wang and Charles S. Zender
 # Licensed under the GNU General Public License v3
 
-"""Parser and scheduler module for SWAMP
-This provides high level access to SWAMP parsing and scheduling functionality.
+"""High-level task management and interface for SWAMP.  This should be
+moved into appropriate swamp.x modules.
 """
 __author__ = "Daniel L. Wang <wangd@uci.edu>"
 #__all__ = ["Parser"] # I should fill this in when I understand it better
 SwampCoreVersion = "$Id$"
 
 # Python imports
-import cPickle as pickle
-import copy # for shallow object copies for pickling
-#import getopt
+import itertools
+from itertools import izip, imap
 import logging
-import md5
+from operator import itemgetter
 import os
-import re
 import shutil
-import struct
-import subprocess
 import time
 import threading
 import urllib
@@ -37,132 +33,14 @@ from swamp.config import Config
 from swamp.parser import Parser
 from swamp.command import CommandFactory
 from swamp import log
-from swamp.execution import ParallelDispatcher
 from swamp.execution import RemoteExecutor
 from swamp.mapper import LinkedMap
+from swamp.scheduler import Scheduler
 import swamp.statistics as statistics
+
 
 def isRemote(filepath):
     return filepath.startswith("http://")        
-
-class Scheduler:
-    def __init__(self, config, graduateHook=lambda x: None):
-        self.config = config
-        self.transaction = None
-        self.env = {}
-        self.taskId = self.makeTaskId()
-        self.cmdList = []
-        self.cmdsFinished = []
-        self.fileLocations = {}
-        self._graduateHook = graduateHook
-        self.result = None # result is True on success, or a string/other-non-boolean on failure.
-        self.cmdCount = 0
-        pass
-
-    def makeTaskId(self):
-        # As SWAMP matures, we should rethink the purpose of a taskid
-        # It's used now to disambiguate different tasks in the database
-        # and to provide a longer-lived way to reference a specific task.
-
-        # if we just need to disambiguate, just get some entropy.
-        # this should get us enough entropy
-        digest = md5.md5(str(time.time())).digest()
-        # take first 4 bytes, convert to hex, strip off 0x and L
-        ## assume int is 4 bytes. works on dirt (32bit) and tephra(64bit)
-        assert struct.calcsize("I") == 4 
-        taskid = hex(struct.unpack("I",digest[:4])[0])[2:10] 
-        return taskid
-    
-    def instanceJobPersistence(self):
-        """finds the class's instance of a JobPersistence object,
-        creating if necessary if it doesn't exist, and caching for
-        future use."""
-        if self.env.has_key("JobPersistence"):
-            o = self.env["JobPersistence"] 
-            if o != None:
-                return o
-        o = JobPersistence(self.config.dbFilename, True)
-        self.env["JobPersistence"] = o
-        return o
-
-
-    def initTransaction(self):
-        log.debug("FIXME: tried to init db transaction.")
-        assert self.transaction is None
-        jp = self.instanceJobPersistence()
-        trans = jp.newPopulationTransaction()
-        self.persistedTask = trans.insertTask(self.taskId)
-        assert self.persistedTask is not None
-        self.transaction = trans
-        pass
-    
-    def schedule(self, parserCommand):
-        if False and self.transaction is None:
-            self.initTransaction()
-        if False:
-            self.transaction.insertCmd(parserCommand.referenceLineNum,
-                                       parserCommand.cmd, parserCommand.original)
-            #concrete = logical # defer concrete mapping
-            def insert(f, isOutput):
-                self.transaction.insertInOutDefer(parserCommand.referenceLineNum,
-                                                  f, f, isOutput, 1)
-                pass
-            map(lambda f: insert(f, False), parserCommand.inputs)
-            map(lambda f: insert(f, True), parserCommand.outputs)
-            pass
-        parserCommand.schedNum(self.cmdCount)
-        self.cmdList.append(parserCommand)
-        self.cmdCount += 1
-        pass
-
-    def finish(self):
-        if self.transaction != None:
-            self.transaction.finish()
-        pass
-    
-    def graduateHook(self, hook):
-        """hook is a unary void function that accepts a graduating command
-        as a parameter.  Invocation occurs sometime after the command
-        commits its output file to disk."""
-        self._graduateHook = hook
-        pass
-
-    def _graduateAction(self, cmd):
-        # save file size data.
-        #cmd.actualOutputs = map(lambda x: (x[0],x[1], os.stat(x[1]).st_size),
-        #                        cmd.actualOutputs)
-        #print "produced outputs:", cmd.actualOutputs
-        self.cmdsFinished.append(cmd)
-        #print "scheduler finished cmd", cmd
-        return self._graduateHook(cmd)
-
-    
-    def executeSerialAll(self, executor=None):
-        def run(cmd):
-            if executor:
-                tok = executor.launch(cmd)
-                retcode = executor.join(tok)
-                return retcode
-        for c in self.cmdList:
-            ret = run(c)
-            if ret != 0:
-                log.debug( "ret was "+str(ret))
-                log.error("error running command %s" % (c))
-                self.result = "ret was %s, error running %s" %(str(ret), c)
-                break
-
-    def executeParallelAll(self, executors=None):
-        if not executors:
-            log.error("Missing executor for parallel execution. Skipping.")
-            return
-        self.pd = ParallelDispatcher(self.config, executors)
-        self.fileLocations = self.pd.dispatchAll(self.cmdList,
-                                                 self._graduateAction)
-        self.result = self.pd.result
-        pass
-    pass # end of class Scheduler
-
-            
 
 
 class SwampTask:
@@ -183,7 +61,6 @@ class SwampTask:
     """
         self.config = config
         self.parser = Parser()
-        #FIXME: need to define publishIfOutput
         self.scheduler = Scheduler(config, self._publishIfOutput)
         self.parser.commandHandler(self.scheduler.schedule)
         self._commandFactory = CommandFactory(self.config)
@@ -223,8 +100,13 @@ class SwampTask:
             self.scrAndLogOuts = self._commandFactory.realOuts()
             self.logOuts = map(lambda x: x[1], self.scrAndLogOuts)
             log.debug("outs are " + str(self.scrAndLogOuts))
+            #self.fail = "Testing: Real operation disabled"
+            #print self.stat._dagGraph(self.scheduler.cmdList)
         except StandardError, e:
             self.fail = str(e)
+            
+        #self.stat._dbgPickleCmds(self.scheduler.cmdList,'last.pypickle')
+        #self.stat._partition(self.scheduler.cmdList)
         pass
 
     def _publishIfOutput(self, obj):
@@ -236,23 +118,33 @@ class SwampTask:
             log.debug("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
             pass
-        log.debug("publishHook: obj is " + str(obj))
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)
         log.debug("filtered is %s" %(str(files)))
+        if files and (len(files[0]) > 3):
+            localfiles = imap(itemgetter(3), files)
+        else:
+            localfiles = itertools.repeat(None)
+        #Unmap local files.
+#        map(self.outMap.discardLogical,
+ #           imap(itemgetter(0), ifilter(lambda t: t[1], izip(ft,localfiles))))
         targetfiles = map(lambda ft: (ft[0], ft[1],
                                       self.outMap.mapWriteFile(ft[0])),
                           files)        
         # fork a thread for this in the future.
-        self._publishHelper(targetfiles)
+        self._publishHelper(izip(targetfiles, localfiles))
 
 
     def _publishHelper(self, filetuples):
         for t in filetuples:
             log.debug("publish " + str(t))
-            actual = t[1]
-            target = t[2]
-            if isRemote(actual):
+            t0 = t[0]
+            actual = t0[1]
+            target = t0[2]
+            local = t[1]
+            if local:
+                actual = local
+            if (not local) and isRemote(actual):
                 #download, then add to local map (in db?)
                 #log.debug("Download start %s -> %s" % (actual, target))
                 urllib.urlretrieve(actual, target)
@@ -425,6 +317,11 @@ class SwampInterface:
         because of the twisted.reactor environment, which traps the
         keyboard interrupt and merely aborts the reactor's listening."""
         self.mainThread.acceptDeath()
+        for e in self.executor:
+            try:
+                e.forceJoin()
+            except:
+                pass
 
     def submit(self, script, outputMapper):
         t = SwampTask(self.executor, self.config,

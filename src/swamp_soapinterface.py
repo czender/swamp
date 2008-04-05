@@ -18,6 +18,8 @@ from swamp.mapper import FileMapper
 # Standard Python imports
 import cPickle as pickle
 import getopt
+from itertools import izip,imap
+from operator import itemgetter
 import logging
 import os
 import sys
@@ -26,10 +28,7 @@ import threading
 
 # (semi-) third-party imports
 import SOAPpy
-import twisted.web.soap as tSoap
 import twisted.web.resource as tResource
-import twisted.web.server as tServer
-import twisted.web.static as tStatic
 
 # SWAMP imports
 
@@ -46,6 +45,48 @@ class LaunchThread(threading.Thread):
         self.updateFunc(self) # put myself as placeholder
         self.updateFunc(self.launchFunc()) # update with real token
 
+class MoveMeCallbackResource(tResource.Resource):
+    # should inherit twisted.web.resource.Resource
+    # if we override init, we need to explicitly call parent constructor
+    def __init__(self, config):
+        tResource.Resource.__init__(self)
+        self.config = config
+        self.urlTable = {}
+        self.prefix = "http://localhost:8070/worker/"
+        config.callback = self # put myself in the config as callback
+        pass
+    def getChild(self, path, request):
+        # getchild is necessary to use numbered syntax.
+        return self
+    def render_GET(self, request):
+        # here, we should check the handler to do the right thing.
+        key = request.prepath[1]
+        url = self.prefix + key
+        #if key in self.urlTable:
+        #    return self.urlTable[key]
+        try:
+            print "urltable has url %s ?" %url, self.urlTable.has_key(url)
+            self.urlTable[url](request.args) # Perform the callback.
+            print "callback ok"
+        except KeyError:
+            return "<html>Unsuccessful call <br/>prepath %s <br/> postpath %s<br/> args %s</html> "% (request.prepath, request.postpath, request.args)
+        return """<html>
+      Hello, world! I am located at %r. and you requested %s
+      Urltable has %s
+    </html>""" % (request.prepath, key, str(self.urlTable))
+    def registerEvent(self, func):
+        # Assign a url. Do we care that this exposes the object ID?
+        key = str(id(func)) 
+        url = self.prefix + key
+        self.urlTable[url] = func
+        return url
+    def unregisterEvent(self, url):
+        try:
+            self.urlTable.remove(url)
+        except:
+            log.error("Tried to remove non-registered callback %s" % url)
+        pass
+        
 
 class StandardJobManager:
     """StandardJobManager manages submitted tasks dispatched by this system.
@@ -63,12 +104,19 @@ class StandardJobManager:
                                   config.execSourcePath,
                                   config.execResultPath,
                                   config.execResultPath)
-        self.resultExportPref = "http://%s:%d/%s/" % (config.serviceHostname,
-                                                      config.servicePort,
-                                                      config.servicePubPath)
 
         self.publishedPaths = [(config.servicePubPath,
-                                config.execResultPath)]
+                                config.execResultPath),
+                               (config.servicePubPath + "s",
+                                config.execScratchPath),
+                               (config.servicePubPath + "b",
+                                config.execBulkPath)]
+        self.exportTemplate = lambda s: "http://%s:%d/%s/" % (config.serviceHostname,
+                                                              config.servicePort,
+                                                              s)
+        self.exportPrefix = map( self.exportTemplate, 
+                                 map(itemgetter(0), self.publishedPaths))
+
         self.publishedFuncs = [self.reset,
                                self.newScriptedFlow, self.discardFlow,
                                self.pollState, self.pollOutputs,
@@ -91,6 +139,8 @@ class StandardJobManager:
     def _setupMaster(self):
         self._workers = {}
         self._nextWorkerToken = 1
+        self.config.serverUrlFromFile = self._actualToPub
+
 
     def _setupVariablePreload(self, interface):
         interface.updateVariablePreload({
@@ -216,13 +266,16 @@ class StandardJobManager:
                 
 
     def _actualToPub(self, f):
-        log.debug("++"+f +self.config.execResultPath)
-        relative = f.split(self.config.execResultPath + os.sep, 1)
-        if len(relative) < 2:
-            log.info("Got request for %s which is not available"%f)
-            return self.resultExportPref
-        else:
-            return self.resultExportPref + relative[1]
+
+        for ((ppath, ipath),pref) in izip(self.publishedPaths,
+                                          self.exportPrefix):
+            relative = f.split(ipath + os.sep, 1)
+            if len(relative) >= 2:
+                return pref + relative[1]
+            
+        log.info("Got request for %s which is not available"%f)
+        return self.exportPrefix[0]
+
     
     def pollOutputs(self, token):
         assert token in self.jobs
@@ -231,9 +284,6 @@ class StandardJobManager:
         outUrls = map(lambda f: (f[0], self._actualToPub( # make url from file
             task.outMap.mapReadFile(f[1]))), # find output localfile
                        outs) #start from logical outs.
-
-        #log.debug("polloutputs: outs "+str(outs))
-        #log.debug("polloutputs: outUrls "+str(outUrls))
 
         return outUrls
 
@@ -245,9 +295,11 @@ class StandardJobManager:
         log.debug("discarding for token %d" %(token))
         pass
 
+
     def startTwistedServer(self):
         self.config.serviceInspectPath = "inspect"
-        custom = [("inspect", inspector.newResource(self.config))]
+        custom = [("inspect", inspector.newResource(self.config)),
+                  ("worker", MoveMeCallbackResource(self.config))]
         self.config.runtimeJobManager = self
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,

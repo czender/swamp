@@ -6,7 +6,7 @@
 
 # 
 # Copyright (c) 2007 Daniel Wang, Charles S. Zender
-# This sample file is part of SWAMP.
+# This source file is part of SWAMP.
 # SWAMP is released under the GNU General Public License version 3 (GPLv3)
 #
 
@@ -17,10 +17,12 @@ import md5
 import operator
 import time
 
+
 # (semi-) third-party imports
 #import twisted.web.resource as tResource
 
 # SWAMP imports
+import swamp.partitioner
 #import swamp
 
 class ScriptStatistic:
@@ -139,108 +141,19 @@ class ScriptStatistic:
                 ]
 
     def _dagGraph(self, cmdList):
-        
-        pass
-    def _emitEdge(self, cmd):
-        
-        pass
-    def _partition(self, cmdList):
-        b = Bipartitioner()
-        return b.result()
+        return partitioner.statDagGraph(cmdList)
+
+    def _dbgPickleCmds(self, cmdList, filename):
+        import cPickle as pickle
+        import copy
+        safecopy = copy.copy(cmdList)
+        map(lambda x: delattr(x, 'factory'), safecopy)
+        pickle.dump(cmdList, open(filename,"w"))        
+        return
+
     def _writeScript(self):
         pass
-        
-class Bipartitioner:
-    """Splits an approximately-min-cut partition of a flow graph."""
-    def __init__(self, cmdList):
-        self.original = cmdList
-        
-        total = len(cmdList)
-        halftotal = total/2
-        # arbitrarily split from ordered sequence
-        self.sets = [set(cmdList[:halftotal]), set(cmdList[halftotal:])]
-        
-        locked = set() # locked nodes
-        # while cutsize is reduced
-        # while valid moves exist
-        # use bucket data to find unlocked node in each partition that most improves cutsize
-        (ba, bb) = self._makeBuckets(setA, setB)
-        maxa = max(ba)
-        maxa = (maxa, ba[maxa])
-        maxb = max(bb)
-        maxb = (maxb, bb[maxb])
-        if maxa[0] > maxb[0]:
-            # move from a to b
-            chain = maxa[1]
-            e = chain.pop()
-            setA.remove(e)
-            setB.add(e)
-            #find new gain:
-            g = self._findGain(e, setB, setA)
-            
-            
-        else:
-            # move from b to a
-            pass
 
-        
-        # make the move
-
-        # lock moved node
-        # update nets
-        
-        pass
-    def _updateGain(self, c, bucket, current, remote):
-        # remove from current chain
-        gain = self._findGain(c, current, remote)
-        # add to new chain.
-        pass
-
-        
-    def _makeBuckets(self, cmdsa, cmdsb):
-        self.buckets = [{},{}]
-        # add a field to each command to eliminate need for extra table
-        def fieldAdder(buckets, sets):
-            def add(c):
-                c.biPartBuckets = buckets
-                c.biPartSets = sets
-            return add
-        map(fieldAdder(self.buckets, self.sets), self.setA)
-        (rb, rs) = (self.buckets[:], self.sets[:])
-        rb.reverse()
-        rs.reverse()
-        map(fieldAdder(rb,rs), self.setB)
-
-        def addToBucket(bucket, cmd, a, b):
-            gain = self._findGain(cmd)
-            bucket[gain] = bucket.get(gain,[]).append(cmd)
-        bucketa = {}
-        map(lambda c: addToBucket(bucketa, c, cmdsa, cmdsb), cmdsa)
-        bucketb = {}
-        map(lambda c: addToBucket(bucketb, c, cmdsb, cmdsa), cmdsb)
-        return (bucketa, bucketb)
-
-
-    def _findGain(self, cmd, source, dest):
-        # gain(move) = number of cross-partition nets before - after
-        # gain approximates the benefit from moving a command.
-        # so, gain = -delta(cost) = -(cost_after - cost_before)
-        # = cost_before - cost_after
-        
-        # before: num of neighbors in other part
-        # after: num of neighbors in current part
-        # assume cost=1, but can estimate later
-        source = cmd.biPartBuckets[0]
-        beforecount = len(filter(lambda x: x in dest,
-                                 cmd.parents + cmd.children))
-        aftercount = len(cmd.parents)+len(cmd.children) - beforecount
-        return beforecount - aftercount
-
-        
-        pass
-    
-    def result(self):
-        return None #FIXME
     
 
 class Tracker:
@@ -289,3 +202,25 @@ def initTracker(config):
 def tracker():
     assert _tracker is not None # consider opening up tracker.
     return _tracker
+
+class Test:
+    def __init__(self):
+        pass
+    def test1(self):
+        from swamp.partitioner import PlainPartitioner
+        import cPickle as pickle
+        cmds = pickle.load(open('last.pypickle'))
+        #b = Bipartitioner(cmds)
+        b = PlainPartitioner(cmds)
+        
+        print b.result()
+        
+                           
+        
+    
+def main():
+    t = Test()
+    t.test1()
+
+if __name__ == '__main__':
+    main()
