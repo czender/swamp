@@ -16,6 +16,8 @@ from twisted.internet import protocol
 from twisted.internet import reactor
 from twisted.internet.utils import getProcessOutputAndValue
 
+from swamp import log
+
 
 usingTwisted = False # set this to True to use Twisted subprocess management.
 
@@ -23,6 +25,7 @@ usingTwisted = False # set this to True to use Twisted subprocess management.
     
 def call(executable, args):
     if usingTwisted:
+        return uglyCall(executable, args)
         return twistedCall(executable, args)
     return pythonCall(executable, args)
 
@@ -35,7 +38,17 @@ def pythonCall(executable, args):
     code = proc.returncode
     return [code, output]
 
-
+def uglyCall(executable, args):
+    # use errno-513-resistant method of execution.
+    code = None
+    while code is None:
+        try:
+            code = os.spawnv(os.P_WAIT, executable, args)
+        except OSError, e:
+            if not (e.errno == 513):
+                raise
+            pass #retry on ERESTARTNOINTR
+    return [code, ""]
 
 # Re-define two functions that Twisted uses.
 from twisted.python import log as tLog

@@ -92,15 +92,19 @@ class ScriptStatistic:
         """
         if not self.finishTime:
             self.stop()
-        print "flush script", self.runTime, "seconds"
-        print "compute time", self.computeTime, "seconds"
-        print "parse time", self.parseTime, "seconds"
-        print "output size", self.outputSize
-        print "input size", self.inputSize
-        print "intermediate size", self.intermedSize
-        print "overall tree width", self.dagWidth
-        print "local slots", self.task.config.execLocalSlots
-
+        report = [
+            "flush script " + str(self.runTime) + " seconds",
+             "compute time" + str(self.computeTime) + "seconds",
+            "parse time" + str(self.parseTime) + "seconds",
+            "output size" + str(self.outputSize),
+            "input size" + str(self.inputSize),
+            "intermediate size" + str(self.intermedSize),
+            "overall tree width" + str(self.dagWidth),
+            "local slots" + str(self.task.config.execLocalSlots)]
+        joined = "\n".join(report) 
+        log.info(joined)
+        print joined
+        
     def statList(self):
         return self._statListForClient()
     
