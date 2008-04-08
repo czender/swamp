@@ -22,6 +22,7 @@ import twisted.web.static as tStatic
 
 # SWAMP imports
 from swamp import log
+from swamp import subproc
 
 class Instance:
     
@@ -82,6 +83,7 @@ class Instance:
         log.debug("Starting SWAMP interface at: %s"% self.url)
         print "Starting SWAMP interface at: %s"% self.url
         extInit()
+        subproc.usingTwisted = True
         reactor.run()
         pass
    
