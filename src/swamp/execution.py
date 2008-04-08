@@ -180,8 +180,6 @@ class LocalExecutor:
             if code != 0:
                 self._failCmd(ctuple, code)
                 break # Do not continue
-                
-            #FIXME: check for error.
             self._graduateCmd(ctuple)
 
         pass
@@ -364,9 +362,6 @@ class LocalExecutor:
         print "fakelaunch tuple",cmd
         cmdLine = cmd.makeCommandLine(lambda x: x, lambda y:y)
         print "fakeran",cmdLine
-        #self.token += 1
-        #self.running.append(self.fakeToken)
-        #return self.fakeToken
         pass
 
     def _launchLocal(self, cmd, locations=[]):
@@ -402,10 +397,6 @@ class LocalExecutor:
         cmd.exec_output = proc.communicate()[0] #Save output (future use)
         code = proc.returncode
         
-        # consider:
-        # exitcode=subprocess.call(executable=binPath,
-        # args=arglist, stdout=some filehandle with output,
-        # stderrr= samefilehandle)
         return code
 
     def _verifyLogicals(self, logicals):
@@ -430,9 +421,10 @@ class LocalExecutor:
                 log.debug("satisfied by other thread")
                 continue
             self.fetchFile = lf
-            #phy = self.filemap.mapBulkFile(lf) # 
             phy = self.filemap.mapWriteFile(lf)
-            # FIXME NOW: d[lf] not always valid!!!
+            if lf not in d:
+                log.error("Missing source for %s" %lf)
+                continue
             log.debug("fetching %s from %s" % (lf, d[lf]))
             self._fetchPhysical(phy, d[lf])
             fetched.append((lf, phy))
@@ -480,7 +472,7 @@ class LocalExecutor:
         return self._discardHosted(self.actual.keys())
 
     def _discardHosted(self, files):
-        # need to map to actual locations first.
+        # Map to actual locations first.
         mappedfiles = map(self.filemap.mapReadFile, files)
         map(self.filemap.discardLogical, files)
         map(self.actual.pop, files)
