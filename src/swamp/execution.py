@@ -36,7 +36,7 @@ from swamp.mapper import FileMapper # just for LocalExecutor.newInstance
 from swamp import log
 from swamp.partitioner import PlainPartitioner
 from swamp.command import picklableList
-
+from swamp import subproc
 
 
 #local module helpers:
@@ -382,20 +382,8 @@ class LocalExecutor:
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
 
-        while True:
-            try:
-                proc = subprocess.Popen(executable=self.binaryFinder(cmd),
-                                        args=cmdLine,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT)
-                break
-            except OSError, e:
-                if not ((e.errno == 513) or (e.errno == 4)):
-                    raise e
-                # pass on errno 513 (ERESTARTNOINTR) or 4 (interrupted syscall)
-        
-        cmd.exec_output = proc.communicate()[0] #Save output (future use)
-        code = proc.returncode
+        (code,out) = subproc.call(self.binaryFinder(cmd), cmdLine)
+        cmd.exec_output = out
         
         return code
 
