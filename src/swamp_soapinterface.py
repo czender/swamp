@@ -48,11 +48,13 @@ class LaunchThread(threading.Thread):
 class MoveMeCallbackResource(tResource.Resource):
     # should inherit twisted.web.resource.Resource
     # if we override init, we need to explicitly call parent constructor
-    def __init__(self, config):
+    def __init__(self, config, subPath):
         tResource.Resource.__init__(self)
         self.config = config
         self.urlTable = {}
-        self.prefix = "http://localhost:8070/worker/"
+        self.prefix = "http://%s:%d/%s/" %(config.serviceHostname,
+                                           config.servicePort, subPath)
+
         config.callback = self # put myself in the config as callback
         pass
     def getChild(self, path, request):
@@ -299,7 +301,7 @@ class StandardJobManager:
     def startTwistedServer(self):
         self.config.serviceInspectPath = "inspect"
         custom = [("inspect", inspector.newResource(self.config)),
-                  ("worker", MoveMeCallbackResource(self.config))]
+                  ("worker", MoveMeCallbackResource(self.config, 'worker'))]
         self.config.runtimeJobManager = self
         s = soapi.Instance((self.config.serviceHostname,
                             self.config.servicePort,
