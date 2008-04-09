@@ -257,7 +257,8 @@ class LocalExecutor:
                              config.execLocalSlots)
 
     def _failCmd(self, cmdTuple, code):
-        self._touchUrl(cmdTuple[0].callbackUrl[1])
+        log.debug("Fail %s code: %s" %(cmdTuple[0], str(code)))
+        self._touchUrl(cmdTuple[0].callbackUrl[1],[])
         
         
     def _graduateCmd(self, cmdTuple):
@@ -381,7 +382,7 @@ class LocalExecutor:
                                       self.filemap.mapWriteFile)
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
-
+        log.debug("Launch %s %s" %(cmd, str(cmdLine)))
         (code,out) = subproc.call(self.binaryFinder(cmd), cmdLine)
         cmd.exec_output = out
         
