@@ -37,6 +37,7 @@ from swamp import log
 from swamp.partitioner import PlainPartitioner
 from swamp.command import picklableList
 from swamp import subproc
+import swamp.statistics as statistics
 
 
 #local module helpers:
@@ -402,7 +403,6 @@ class LocalExecutor:
         if len(logicals) == 0:
             return []
         log.info("need fetch for %s from %s" %(str(logicals),str(srcs)))
-        
         d = dict(srcs)
         for lf in logicals:
             self._fetchLock.acquire()
@@ -410,6 +410,8 @@ class LocalExecutor:
                 self._fetchLock.release()
                 log.debug("satisfied by other thread")
                 continue
+            start = time.time()
+        
             self.fetchFile = lf
             phy = self.filemap.mapWriteFile(lf)
             if lf not in d:
@@ -419,7 +421,11 @@ class LocalExecutor:
             self._fetchPhysical(phy, d[lf])
             fetched.append((lf, phy))
             self.fetchFile = None
+            end = time.time()
+            diff = end-start
+            statistics.tracker().logTransfer(d[lf], diff)
             self._fetchLock.release()
+
         return fetched
 
     def _fetchPhysical(self, physical, url):

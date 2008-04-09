@@ -37,6 +37,7 @@ class ScriptStatistic:
         self.script = script
         self.task = task
         self.hexhash = md5.md5(script).hexdigest()
+        self.transfers = []
         pass
 
     def outputFiles(self, filesizelist):
@@ -86,7 +87,9 @@ class ScriptStatistic:
         self.parseTime = self.parseFinishTime - self.startTime
         self.computeTime = self.finishTime - self.parseFinishTime
         pass
-    
+
+    def logTransfer(self, aFile, xTime):
+        self.transfers.add((aFile,xTime))
     def finish(self):
         """Mark as finished, and perform whatever else we need to do to
         close things down, e.g. calculate durations, flush to disk, etc.
@@ -95,8 +98,8 @@ class ScriptStatistic:
             self.stop()
         report = [
             "flush script " + str(self.runTime) + " seconds",
-            "compute time " + str(self.computeTime) + "seconds",
-            "parse time " + str(self.parseTime) + "seconds",
+            "compute time " + str(self.computeTime) + " seconds",
+            "parse time " + str(self.parseTime) + " seconds",
             "output size " + str(self.outputSize),
             "input size " + str(self.inputSize),
             "intermediate size " + str(self.intermedSize),
@@ -168,6 +171,8 @@ class Tracker:
     """
     def __init__(self, config):
         self.script = {}
+        self.current = None
+        self.orphan = []
         
     def scriptStart(self, scriptTuple):
         """Log the start of a script.
@@ -184,10 +189,14 @@ class Tracker:
         (key, script, task) = scriptTuple
         stat = ScriptStatistic(script, task)
         self.script[key] = stat
+        self.current = stat
         return stat
 
-
-
+    def logTransfer(self, aFile, xTime):
+        if self.current:
+            self.current.logTransfer(aFile, xTime)
+        else:
+            self.orphan.add((aFile, xTime))
     def scriptStat(self, key):
         return self.script[key]
 
