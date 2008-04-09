@@ -320,6 +320,7 @@ class LocalExecutor:
         try:
             pkg = dict([(x[0],(x[1],x[2])) for x in actualOutputs])
             data = urllib.urlencode(pkg)
+            log.debug("Touching URL: %s" %url)
             f = urllib2.urlopen(url + "?"+data)
             f.read() # read result, discard for now
         except KeyError:

@@ -23,6 +23,7 @@ import time
 
 # SWAMP imports
 import swamp.partitioner
+from swamp import log
 #import swamp
 
 class ScriptStatistic:
@@ -94,13 +95,13 @@ class ScriptStatistic:
             self.stop()
         report = [
             "flush script " + str(self.runTime) + " seconds",
-             "compute time" + str(self.computeTime) + "seconds",
-            "parse time" + str(self.parseTime) + "seconds",
-            "output size" + str(self.outputSize),
-            "input size" + str(self.inputSize),
-            "intermediate size" + str(self.intermedSize),
-            "overall tree width" + str(self.dagWidth),
-            "local slots" + str(self.task.config.execLocalSlots)]
+            "compute time " + str(self.computeTime) + "seconds",
+            "parse time " + str(self.parseTime) + "seconds",
+            "output size " + str(self.outputSize),
+            "input size " + str(self.inputSize),
+            "intermediate size " + str(self.intermedSize),
+            "overall tree width " + str(self.dagWidth),
+            "local slots " + str(self.task.config.execLocalSlots)]
         joined = "\n".join(report) 
         log.info(joined)
         print joined
