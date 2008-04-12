@@ -1,4 +1,4 @@
-# $Id: server.py 36 2007-09-26 01:18:06Z daniel2196 $
+# $Id$
 
 """
 execution - contains code related to executing commands
@@ -132,8 +132,18 @@ class LocalExecutor:
         self._fetchLock = threading.Lock()
         self._startPool(self.slots)
         self._enqueue = lambda cmd,clus: self.cmdQueue.put((cmd,clus))
+
         pass
-    
+
+    def _urlTouchPeriodic(self):
+        batch = []
+        try:
+            while True:
+                batch.append(self._urlQueue.get_nowait())
+        except:
+            pass
+        self._touchUrlBatch(batch)
+
     def _threadRun(self):
         "Placeholder: runtime alias of _threadRunFake or _threadRunLocal"
         raise "---ERROR--- unmapped call to threadRun"
@@ -151,16 +161,17 @@ class LocalExecutor:
         # architecture used async spawning, but had to resort to
         # periodic waitpid calls. 
 
-        while self.alive:
-            # dispatch as we are able.
-            # shove everything we can on the queue.
-            self._queueAllReady()
-            # Is there a real reason for doing this more
-            # than once? What if the original queuing action puts
-            # things on the queue directly?
-            time.sleep(2)
-            
+        # dispatch as we are able.
+        # shove everything we can on the queue.
+        self._queueAllReady()
+        # Is there a real reason for doing this more
+        # than once? What if the original queuing action puts
+        # things on the queue directly?
 
+        while self.alive:
+            #self._UrlTouchPeriodic()
+            time.sleep(0.5)
+            
         pass
 
     def _startPool(self, num):
@@ -259,8 +270,11 @@ class LocalExecutor:
 
     def _failCmd(self, cmdTuple, code):
         log.debug("Fail %s code: %s" %(cmdTuple[0], str(code)))
-        self._touchUrl(cmdTuple[0].callbackUrl[1],[])
-        
+        if hasattr(cmdTuple[0], 'callbackUrl'):
+            self._touchUrl(cmdTuple[0].callbackUrl[1],[])
+        else:
+            log.debug("Deferring failure: NOT IMPLEMENTED.")
+            # Ideally, find undeferred children and touch their failure urls.
         
     def _graduateCmd(self, cmdTuple):
 
@@ -307,7 +321,10 @@ class LocalExecutor:
         map(lambda c: self._enqueue(c,cluster), enq)
         
         # report results
-        self._touchUrl(cmd.callbackUrl[0], cmd.actualOutputs)
+        if hasattr(cmd, 'callbackUrl'):
+            self._touchUrl(cmd.callbackUrl[0], cmd.actualOutputs)
+        else:
+            log.debug("deferring callback for cmd %s" % cmd.cmd)
         if len(cluster.exec_finishedCmds) == len(cluster.cmds):
             # call cluster graduation.
             func = self.runningClusters.pop(cluster)
@@ -384,7 +401,7 @@ class LocalExecutor:
                                       self.filemap.mapWriteFile)
         #Make room for outputs (shouldn't be needed)
         self._clearFiles(map(lambda t: t[1], cmd.actualOutputs))
-        log.debug("Launch %s %s" %(cmd, str(cmdLine)))
+        log.debug("Launch %s " %(" ".join(cmdLine)))
         (code,out) = subproc.call(self.binaryFinder(cmd), cmdLine)
         cmd.exec_output = out
         
@@ -525,12 +542,17 @@ class RemoteExecutor:
     
     def dispatch(self, cluster, registerFunc, finishFunc, outputPatch=None,
                  locations=[]):
-        
+        """ WARNING, sets 'deferred' attribute to contain cmds whose
+        graduations are deferred."""
+        prolific = set(cluster.prolificMembers())
+
+        #print "prolific are",map(lambda c: c.outputs[0],prolific)
+        prolific.update(cluster.leafMembers())
         funcs = map(lambda c:
                     setattr(c,
                             'callbackUrl',
                             registerFunc(c, lambda cm,f,cu: self._graduateCmd(c, cluster, f,cu),
-                                         self, False)), cluster.cmds)
+                                         self, False)), prolific)
 
         
         # Take the cluster, dispatch it
@@ -544,15 +566,21 @@ class RemoteExecutor:
         # helper shouldn't worry about them.
         pc = cluster.pickleSelf(picklableList)
 
+        cluster.deferred = cluster.cmds.difference(prolific)
+
+        #print "prolific+leaves are",map(lambda c: c.outputs[0],prolific)
+        #print "deferred outputs are",map(lambda c: c.outputs[0],cluster.deferred)
         # Fill-in management fields afterwards so they don't get pickled.
         # Register callback URLs for each command
         cluster.exec_finishCount = 0
+        cluster.exec_criticalCount = len(prolific)
         # Set finishing function for the cluster
-        cluster.exec_finishFunc = finishFunc        
+        cluster.exec_finishFunc = finishFunc
+        
         self.rpc.processCluster(pc)
         
         pass
-    
+
     def forceJoin(self):
         pass
 
@@ -574,10 +602,6 @@ class RemoteExecutor:
         self.rpc.discardFiles(files)
 
         
-
-
-
-
     def _graduateCmd(self, cmd, cluster, fail, custom):
         # Cluster callback needs to passthrough this object,
         # so that we know when a cluster is finished, otherwise
@@ -587,13 +611,7 @@ class RemoteExecutor:
 
         # custom is of the form: 
         #{'filename.nc': ["('http://host:8082/pathname/munged.nc', 1234)"]}
-
-        
-        #if fail:
-            # FIXME: Do the right thing when things fail
-            #pass
-        # handle actualOutputs
-        print "graduating with custom=",custom
+        # FIXME: don't forget to do the unregistering.
         if custom:
             def unbundle(x):
                 props = x[1][0] # Want to do eval(x[1][0]), but it's unsafe.
@@ -609,9 +627,13 @@ class RemoteExecutor:
         
         # Do cluster bookkeeping    
         cluster.exec_finishCount += 1
-        if cluster.exec_finishCount == len(cluster.cmds):
+        if cluster.exec_finishCount == cluster.exec_criticalCount:
+            # Request deferred discard.
             cluster.exec_finishFunc()
             self.runningClusters.discard(cluster) #discard supresses errors.
+            files = chain(*imap(lambda c: c.outputs, cluster.deferred))
+            self.rpc.discardFiles([x for x in files])
+
             self.finishedClusters.add(cluster)
         pass
         

@@ -16,7 +16,8 @@
 import md5
 import operator
 import time
-
+import operator
+from itertools import imap
 
 # (semi-) third-party imports
 #import twisted.web.resource as tResource
@@ -86,10 +87,11 @@ class ScriptStatistic:
         self.runTime = self.finishTime - self.startTime
         self.parseTime = self.parseFinishTime - self.startTime
         self.computeTime = self.finishTime - self.parseFinishTime
+        self.transferTime = sum(imap(operator.itemgetter(1), self.transfers))
         pass
 
     def logTransfer(self, aFile, xTime):
-        self.transfers.add((aFile,xTime))
+        self.transfers.append((aFile,xTime))
     def finish(self):
         """Mark as finished, and perform whatever else we need to do to
         close things down, e.g. calculate durations, flush to disk, etc.
@@ -100,6 +102,7 @@ class ScriptStatistic:
             "flush script " + str(self.runTime) + " seconds",
             "compute time " + str(self.computeTime) + " seconds",
             "parse time " + str(self.parseTime) + " seconds",
+            "internal xfer time " + str(self.transferTime) + " seconds",
             "output size " + str(self.outputSize),
             "input size " + str(self.inputSize),
             "intermediate size " + str(self.intermedSize),
@@ -196,7 +199,7 @@ class Tracker:
         if self.current:
             self.current.logTransfer(aFile, xTime)
         else:
-            self.orphan.add((aFile, xTime))
+            self.orphan.append((aFile, xTime))
     def scriptStat(self, key):
         return self.script[key]
 

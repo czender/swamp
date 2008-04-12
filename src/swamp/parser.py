@@ -1,4 +1,4 @@
-# $Id: server.py 36 2007-09-26 01:18:06Z daniel2196 $
+# $Id$
 
 """
 parser - contains general parsing code.
@@ -366,7 +366,7 @@ class NcoParser:
                                       (argDict, argList, leftover),
                                       (ins,outs), lineNumber)
         else:
-            print ":( no factory."
+            #print ":( no factory."
             return cmd
 
     @staticmethod

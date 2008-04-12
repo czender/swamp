@@ -1,4 +1,4 @@
-# $Id: $
+# $Id$
 """
    partitioner -- a module containing logic for splitting commands into
    "good" partitions.
@@ -106,6 +106,21 @@ class CommandCluster:
         self.parents.clear()
         pass
 
+    def prolificMembers(self):
+        """Prolific members are members of this cluster with children
+        outside the cluster."""
+
+        prolific = filter(lambda c: not self.cmds.issuperset(c.children),
+                          self.cmds)
+        return prolific
+
+    def leafMembers(self):
+        """Leaf members are members of this cluster that have no children
+        within the cluster."""
+        leaves = filter(lambda c: not self.cmds.intersection(c.children),
+                        self.cmds)
+        return leaves
+    
     def ready(self, finishedCmds):
         # If all of my roots are ready to run, then I am ready.
         f = set(finishedCmds) # safe, even if finishedCmds is a set
