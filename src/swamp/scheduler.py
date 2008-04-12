@@ -13,7 +13,9 @@
 # Python dependencies:
 import cPickle as pickle
 import itertools
+from itertools import chain, imap, izip, repeat
 import md5
+import operator
 import struct
 import time
 import threading
@@ -202,8 +204,8 @@ class NewParallelDispatcher:
         Alternatively, we can let the thread babysit the remote
         operation and detect faults.  
         """
-        funcs = [lambda custom: self._graduate(cmd, gradHook, executor, False, custom),
-                 lambda custom: self._graduate(cmd, gradHook, executor, True, custom)]
+        funcs = [lambda custom: self.graduate(cmd, gradHook, executor, False, custom),
+                 lambda custom: self.graduate(cmd, gradHook, executor, True, custom)]
         if isLocal:
             return funcs
         else:
@@ -214,6 +216,7 @@ class NewParallelDispatcher:
         """delete a callback.  Generally, each callback is supposed to be executed at most once.
         """
         self.listener.deleteCallback(url)
+        pass
 
     def idle(self):
         return self.count >= self.targetCount
@@ -236,7 +239,8 @@ class NewParallelDispatcher:
         ## 'graduate' function.  That will let child clusters start
         ## earlier, notably when they depend on a subset of the
         ## cluster's outputs
-        rp = ""
+        if hasattr(cluster, 'deferred'):
+            self._bulkGraduate(cluster.deferred, executor)
         # Put cluster on a 'finished clusters' list
         self.finishedClusters.add(cluster)
         # Now update a ready clusters list-- we prefer dispatching
@@ -289,8 +293,26 @@ class NewParallelDispatcher:
                           outputPatch=self.config.serverUrlFromFile,
                           locations=inputLocs)
 
+    def _bulkGraduate(self, cmds, executor):
+        """Perform barebones graduation of commands to maintain bookkeeping
+        invariants"""
+        self.count += len(cmds)
+        self.finished.update(cmds)
+        log.debug("Bulk graduating: %s" % (
+            ", ".join(imap(lambda c: c.cmd+str(c.referenceLineNum), cmds))))
+        if self.okayToReap:
+            self._reapCommands(cmds)
+        map(lambda o: appendList(self.execLocation, o, (executor,o)),
+            chain(*imap(lambda c: c.outputs,cmds)))
+
+    def _reapCommands(self, cmds):
+        cptuples = chain(*imap(lambda c: izip(repeat(c),
+                                              c.inputsWithParents), cmds))
+        deadones = filter(lambda t: self.isDead(t[1], t[0]), cptuples)        
+        self.releaseFiles(imap(operator.itemgetter(1), deadones))
+                  
         
-    def _graduate(self, cmd, gradHook, executor, fail, custom):
+    def graduate(self, cmd, gradHook, executor, fail, custom):
         #The dispatcher isn't really in charge of dependency
         #checking, so it doesn't really need to know when things
         #are finished.
@@ -332,8 +354,7 @@ class NewParallelDispatcher:
 
             # delete consumed files.
             if self.okayToReap:
-                self.releaseFiles(filter(lambda f: self.isDead(f, cmd),
-                                         cmd.inputsWithParents))
+                self._reapCommands([cmd])
             e = executor # token is (executor, etoken)
             map(lambda o: appendList(self.execLocation, o[0], (executor,o[1])),
                 cmd.actualOutputs)
@@ -363,6 +384,7 @@ class NewParallelDispatcher:
             map(self.execLocation.pop, files)
         except:
             print "error execlocationpop",files
+            print "keys:",self.execLocation.keys()
             pass
 
    

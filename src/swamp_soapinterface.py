@@ -67,9 +67,7 @@ class MoveMeCallbackResource(tResource.Resource):
         #if key in self.urlTable:
         #    return self.urlTable[key]
         try:
-            print "urltable has url %s ?" %url, self.urlTable.has_key(url)
             self.urlTable[url](request.args) # Perform the callback.
-            print "callback ok"
         except KeyError:
             return "<html>Unsuccessful call <br/>prepath %s <br/> postpath %s<br/> args %s</html> "% (request.prepath, request.postpath, request.args)
         return """<html>

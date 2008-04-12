@@ -24,6 +24,7 @@ from swamp_common import *
 from swamp.config import Config     
 import swamp.inspector as inspector
 import swamp.soapi as soapi
+import swamp.statistics as statistics
 from swamp.mapper import FileMapper
 
 # FIXME: reorg code to not need these two:
@@ -170,7 +171,7 @@ class JobManager:
         
         self.config.dumpSettings(log, logging.DEBUG)
         self._setupLogging(self.config)
-        
+        statistics.initTracker(self.config)
         self.jobs = {} # dict: tokens -> jobstate
    
         self.token = 0
