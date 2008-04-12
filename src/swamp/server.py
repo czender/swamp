@@ -121,7 +121,12 @@ class WorkerConnector(threading.Thread):
         server = SOAPpy.SOAPProxy(self._target[0])
         # logging may have been closed--e.g. Ctrl-C initiated 
         #log.debug("Disconnecting")
-        ack = server.unregisterWorker(self._token)
+        try:
+            ack = server.unregisterWorker(self._token)
+        except:
+            #It's okay if we fail disconnecting
+            log.info("Error disconnecting from master")
+            pass
         #log.debug("Disconnected from master")
         pass
     
