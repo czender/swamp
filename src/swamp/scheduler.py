@@ -304,6 +304,8 @@ class NewParallelDispatcher:
             self._reapCommands(cmds)
         map(lambda o: appendList(self.execLocation, o, (executor,o)),
             chain(*imap(lambda c: c.outputs,cmds)))
+        # Service our hook (our parent scheduler)
+        map(self.gradHook, cmds)
 
     def _reapCommands(self, cmds):
         cptuples = chain(*imap(lambda c: izip(repeat(c),
