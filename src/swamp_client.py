@@ -122,7 +122,12 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
     """)
         print "submitted, got token: ", tok
         while True:
-            ret = server.pollState(tok)
+            try:
+                ret = server.pollState(tok)
+            except:
+                print "transient poll failure, retrying"
+                time.sleep(1)
+                continue
             if ret is not None:
                 print "finish, code ", ret
                 break
