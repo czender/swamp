@@ -576,7 +576,7 @@ class RemoteExecutor:
         cluster.exec_criticalCount = len(prolific)
         # Set finishing function for the cluster
         cluster.exec_finishFunc = finishFunc
-        
+        self.runningClusters.add(cluster)
         self.rpc.processCluster(pc)
         
         pass
