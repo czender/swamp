@@ -154,7 +154,8 @@ class WorkerConnector(threading.Thread):
             log.debug("Bad registration, will retry " + str(ack))
             self._timeLastAttempt = time.time()
             return
-        log.debug("Successfuly registered to " + self._target[0])
+        log.debug("Successfuly registered to " + self._target[0] +
+                  " " + str(self._offer()))
         self._token = ack
         # on success, set connected.
         self._connected = True

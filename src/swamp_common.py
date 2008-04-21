@@ -115,8 +115,9 @@ class SwampTask:
         if getattr(obj, "actualOutputs", False): # duck-typing
             actfiles = obj.actualOutputs
         else:
-            log.debug("publishifoutput expected cmd, but got %s"%str(obj))
+            log.error("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
+            return
             pass
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)
