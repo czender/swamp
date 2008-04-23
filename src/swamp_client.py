@@ -233,7 +233,12 @@ ncwa -a time -dtime,0,2 camsom1pdf/camsom1pdf_10_clm.nc timeavg.nc
         lastblip = 0
         lastextra = None
         while True:
-            ret = server.pollState(token)
+            try:
+                ret = server.pollState(token)
+            except:
+                print "transient poll failure, retrying"
+                time.sleep(1)
+                continue
             state = SwampTaskState.newFromPacked(ret)
             if state.stable():
                 print "Task finished (%d - %s) " %( state.state,
