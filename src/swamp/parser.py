@@ -37,8 +37,8 @@ class Common:
     
     BacktickExpr = BacktickParser.backtickString
     SubValue = BacktickExpr.copy().setResultsName("indValue")
-
-
+    NumberSeq = 
+    Sequence = Literal("{") + (NumberSeq^LetterSeq) + Literal("}")
     Range = OneOrMore(Value ^ SubValue ^ Reference).setResultsName("range")
     @staticmethod
     def p(t):
@@ -119,6 +119,7 @@ class VariableParser:
                         + Common.Identifier \
                         + Literal("=").suppress() + self.arithExpr
         def arithAssign(lhs,rhs):
+            print "arith:lhs=",lhs,"rhs=",rhs, "eval=",eval("".join(rhs))
             assign(lhs, str(eval("".join(rhs))))
         varArithmetic.setParseAction(lambda s,loc,toks:
                                      arithAssign(toks[0], toks[1:]))
@@ -162,7 +163,7 @@ class VariableParser:
 
         # by defining exponentiation as "atom [ ^ factor ]..." instead of "atom [ ^ atom ]...", we get right-to-left exponents, instead of left-to-righ
         # that is, 2^3^2 = 2^(3^2), not (2^3)^2.
-        term = atom #+ ZeroOrMore(multop + atom)
+        term = atom + ZeroOrMore(multop + atom)
         expr << term + ZeroOrMore(addop + term)
 
         return expr
@@ -179,6 +180,7 @@ class VariableParser:
         pass
     def varLet(self, fragment):        
         try:
+            
             return [x for x in self.varArithmetic.parseString(fragment)]
         except ParseException, e:
             return 
