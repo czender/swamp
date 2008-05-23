@@ -153,10 +153,14 @@ class CommandFactory:
     for finding your parent.
     For each output, create a new scriptname->logical name mapping,
     incrementing the logical name if a mapping already exists.  
+
+    From config, CommandFactory utilizes the following items:
+    execSourcePath. 
     
     """
     def __init__(self, config):
-        self.config = config
+        #self.config = config
+        self.sourcePath = config.execSourcePath
         self.commandByLogicalOut = {}
         self.commandByLogicalIn = {}
         self.logicalOutByScript = {}
@@ -199,7 +203,7 @@ class CommandFactory:
     def expandConcreteInput(self, inputFilename):
         # WARN: this may not be threadsafe! 
         save = os.getcwd()
-        os.chdir(self.config.execSourcePath)
+        os.chdir(self.sourcePath)
         # no absolute paths in input filename!
         s = inputFilename.lstrip("/")
         res = globglob(s)
