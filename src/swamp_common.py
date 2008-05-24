@@ -324,7 +324,7 @@ class SwampInterface:
             except:
                 pass
 
-    def submit(self, script, outputMapper):
+    def submit(self, script, paramList, outputMapper):
         t = SwampTask(self.executor, self.config,
                       script, outputMapper, self._customizer)
         log.info("after parse: " + time.ctime())
@@ -392,6 +392,11 @@ class SwampInterface:
         self.variablePreload.update(newVars)
         return 
 
+    def _makeCustomizer(self):
+        def paramCustomizer(parser):
+            #FIXME: need to do this to passthrough commandline parameters
+            paramVars = itertools.i[itertools.count(1), paramList]
+            parser.updateVariables(paramList)
     def _customizer(self, parser, scheduler, commandFactory):
         if len(self.variablePreload) > 0:
             parser.updateVariables(self.variablePreload)

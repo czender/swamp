@@ -162,14 +162,14 @@ class StandardJobManager:
         #self.fileMapper.cleanPhysicals()
         log.info("Reset finish")
         
-    def newScriptedFlow(self, script):
+    def newScriptedFlow(self, script, paramList=None):
         self.tokenLock.acquire()
         self.token += 1
         token = self.token + 0
         self.tokenLock.release()
         #log.info("Received new workflow (%d) {%s}" % (token, script))
         log.info("Received new workflow (%d) {%s}" % (token, ""))
-        self._threadedLaunch(script, token)
+        self._threadedLaunch(script, paramList, token)
         log.debug("return from thread launch (%d)" % (token))
         return token
 
@@ -194,18 +194,18 @@ class StandardJobManager:
     def _updateToken(self, token, etoken):
         self.jobs[token] = etoken
 
-    def _launchScript(self, script, token):
+    def _launchScript(self, script, paramList, token):
         self._updateToken(token, thread.get_ident()) # put in a placeholder
         log.info("Admitting workflow for execution")
-        task = self.swampInterface.submit(script, self.filemap)
+        task = self.swampInterface.submit(script, paramList, self.filemap)
         log.info("Admitted workflow: workflow id=%s" % task.taskId())
         self._updateToken(token, task)
         return task
         
-    def _threadedLaunch(self, script, token):
+    def _threadedLaunch(self, script, paramList, token):
         """this is pretty easy to merge: just think about the right
         point to parameterize."""
-        launch = lambda : self._launchScript(script, token)
+        launch = lambda : self._launchScript(script, paramList, token)
         update = lambda x: x
         thread = LaunchThread(launch, update)
         thread.start()
