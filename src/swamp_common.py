@@ -393,9 +393,12 @@ class SwampInterface:
         return 
 
     def _makeCustomizer(self):
+        """Make a customizer for passing through command-line args to script.
+        Convert a paramList=["-v", "one", "two"] to $1="-v", $2="one",$3="two"
+        """
         def paramCustomizer(parser):
             #FIXME: need to do this to passthrough commandline parameters
-            paramVars = itertools.i[itertools.count(1), paramList]
+            paramVars = itertools.izip(itertools.count(1), paramList)
             parser.updateVariables(paramList)
     def _customizer(self, parser, scheduler, commandFactory):
         if len(self.variablePreload) > 0:
