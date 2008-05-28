@@ -30,6 +30,7 @@ ncwa $THIRTY.x shouldbe.30.x
     def run(self):
         self.varParseTest()
         self.testExpansion()
+        self.testGrammar()
         pass
 
     def varParseTest(self):
@@ -55,6 +56,11 @@ ncwa $THIRTY.x shouldbe.30.x
         print vp.varLet(test9)
         print vp.varMap
 
+    def testGrammar(self):
+        ranges = ["1 2 3 4 5", "{1..5}", "a b c", "{a..c}", "c b a", "{c..a}"]
+        for s in ranges:
+            result = swamp.parser.Common.Range.parseString(s)
+            print s, "---", result
     def testExpansion(self):
         class DummyFactory:
             def newCommand(self, cmd, argtriple, inouts, refnum):

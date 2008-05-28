@@ -233,8 +233,8 @@ class PlainPartitioner:
                                rnodeparents, set())
             map(c.addParent, rcparents) # add the cluster parents
             
-        children = cluster.parents  # FIXME: this for loop is not done.
-        for c in rc: # for each new root cluster, connect it with its parent.
+        children = cluster.parents  
+        for c in rc: # for each new root cluster, connect it with its children
             c.updateChildCmds()
             nchildren  = c.childCmds # child commands of this cluster
             rcchildren = reduce(lambda n0,n:
