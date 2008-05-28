@@ -13,6 +13,7 @@ parser - contains general parsing code.
 import getopt
 import os
 import shlex
+import string
 import types
 
 # (semi-)third-party imports
@@ -37,9 +38,21 @@ class Common:
     
     BacktickExpr = BacktickParser.backtickString
     SubValue = BacktickExpr.copy().setResultsName("indValue")
-    NumberSeq = 
-    Sequence = Literal("{") + (NumberSeq^LetterSeq) + Literal("}")
-    Range = OneOrMore(Value ^ SubValue ^ Reference).setResultsName("range")
+    NumberSeq = Word(string.digits) + Literal("..").suppress() + Word(string.digits)
+    def parseNumSeq(s,loc,toks):
+        r = (int(toks[0]),int(toks[1]))
+        if r[1]-r[0] < 0: return range(r[0], r[1]-1, -1)
+        else: return range(r[0],r[1]+1)
+    NumberSeq.setParseAction(parseNumSeq)
+    LetterSeq = Word(string.letters) + Literal("..").suppress() + Word(string.letters)
+    def parseCharSeq(s,loc,toks):
+        r = (ord(toks[0]),ord(toks[1]))
+        if r[1]-r[0] < 0: s = range(r[0], r[1]-1, -1)
+        else: s = range(r[0],r[1]+1)
+        return map(chr, s)
+    LetterSeq.setParseAction(parseCharSeq)
+    Sequence = Literal("{").suppress() + (NumberSeq^LetterSeq) + Literal("}").suppress()
+    Range = OneOrMore(Value ^ SubValue ^ Reference ^ Sequence).setResultsName("range")
     @staticmethod
     def p(t):
         print "rangetoks",t
