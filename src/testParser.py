@@ -29,10 +29,22 @@ ncwa $THIRTY.x shouldbe.30.x
 
     def run(self):
         self.varParseTest()
-        self.testExpansion()
-        self.testGrammar()
+        self.expansionTest()
+        self.grammarTest()
+        self.contextTest()
         pass
 
+    def contextTest(self):
+        lines = ["ls",
+                 "cd ..",
+                 "cd sub",
+                 "cd .."]
+
+        fakeFactory = None
+        p = swamp.parser.Parser()
+        p.parseScript("\n".join(lines), None)
+        pass
+    
     def varParseTest(self):
 
         vp = swamp.parser.VariableParser({})
@@ -56,12 +68,13 @@ ncwa $THIRTY.x shouldbe.30.x
         print vp.varLet(test9)
         print vp.varMap
 
-    def testGrammar(self):
+    def grammarTest(self):
         ranges = ["1 2 3 4 5", "{1..5}", "a b c", "{a..c}", "c b a", "{c..a}"]
         for s in ranges:
             result = swamp.parser.Common.Range.parseString(s)
             print s, "---", result
-    def testExpansion(self):
+
+    def expansionTest(self):
         class DummyFactory:
             def newCommand(self, cmd, argtriple, inouts, refnum):
                 print "new command",cmd

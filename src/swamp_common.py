@@ -326,7 +326,7 @@ class SwampInterface:
 
     def submit(self, script, paramList, outputMapper):
         t = SwampTask(self.executor, self.config,
-                      script, outputMapper, self._customizer)
+                      script, outputMapper, self._makeCustomizer(paramList))
         log.info("after parse: " + time.ctime())
         self.mainThread.acceptTask(t)
         return t
@@ -392,15 +392,20 @@ class SwampInterface:
         self.variablePreload.update(newVars)
         return 
 
-    def _makeCustomizer(self):
+    def _makeCustomizer(self, paramList):
         """Make a customizer for passing through command-line args to script.
         Convert a paramList=["-v", "one", "two"] to $1="-v", $2="one",$3="two"
         """
-        def paramCustomizer(parser):
-            #FIXME: need to do this to passthrough commandline parameters
-            paramVars = itertools.izip(itertools.count(1), paramList)
-            parser.updateVariables(paramList)
-    def _customizer(self, parser, scheduler, commandFactory):
+        def customize(parser, scheduler, commandFactory):
+            if paramList:
+                paramVars = itertools.izip(itertools.count(1), paramList)
+                parser.updateVariables(paramList)
+            if len(self.variablePreload) > 0:
+                parser.updateVariables(self.variablePreload)
+            return True
+        return customize
+
+    def _customizerDeprecate(self, parser, scheduler, commandFactory):
         if len(self.variablePreload) > 0:
             parser.updateVariables(self.variablePreload)
         return True
