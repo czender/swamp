@@ -11,6 +11,7 @@ parser - contains general parsing code.
 
 # Std. Python imports
 import getopt
+import itertools
 import os
 import shlex
 import string
@@ -432,6 +433,30 @@ class NcoParser:
         else:
             return (argv[0] in NcoParser.commands)    
 
+class MetaParser:
+    def __init__(self, targetParser):
+        self.parser = targetParser
+        itertools.ifilter(lambda x: x, dir(self))
+        pass
+
+    def accepts(self, argv):
+        """Quickly test to see if we recognize this line"""
+        if len(argv) < 1:
+            return False
+        else:
+            return (argv[0] in NcoParser.commands)    
+
+    def parse(self, original, argv, lineNumber=0, factory=None):
+        """Perform parsing and apply state changing logic"""
+        print "Metaparse", original
+        cmd = argv[0]
+        return self.action[cmd](original, argv, lineNumber, factory)
+
+    def cmdrm(self):
+        pass
+
+                                
+        
 
 class Parser:
     """Parse a SWAMP script for NCO(for now) commands"""
@@ -487,6 +512,8 @@ class Parser:
         Parser.staticInit()
         self.handlers = {} # a lookup table for parse accept handlers
         self._variables = {} # a lookup table for variables
+        self._variables["PWD"] = "." # Preset working directory
+
         self.lineNum=0
         self.modules = []
         self.handlerDefaults()
@@ -508,7 +535,8 @@ class Parser:
         pass
 
     def handlerDefaults(self):
-        self.modules = [(NcoParser, None)]
+        self.modules = [(NcoParser, None),
+                        (MetaParser(self), None)]
 
         pass
     
@@ -562,6 +590,7 @@ class Parser:
                 cmd = mod[0].parse(lineTup[0], argv,
                                    lineTup[1], self._factory)
                 return cmd
+        
         print "stdAccept reject", argv
         return False
 
