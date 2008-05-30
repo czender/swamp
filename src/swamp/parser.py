@@ -436,7 +436,23 @@ class NcoParser:
 class MetaParser:
     def __init__(self, targetParser):
         self.parser = targetParser
-        itertools.ifilter(lambda x: x, dir(self))
+        if os.path.sep != "/":
+            log.error("Path resolution logic not tested for pathsep != /")
+
+        # These need to be tracked in parser's env variables
+        # Also, for this to really work, NcoParser needs to be able to
+        # pull path info from env vars, which means envvars need to live
+        # in the factory, or the factory needs a link to the env vars.
+        self.pathHome = "." # point at HOME
+        self.pwd = "." # change to point at PWD variable
+        
+        # --Construct action list--
+        # Filter cmds to export
+        l = itertools.ifilter(lambda x: x.startswith("cmd"), dir(self))
+        # Map cmds to method calls
+        c = itertools.imap(lambda x: [x[3:], getattr(self,x)], l)
+        # Make dict ("cd", self.cmdcd)
+        self.action = dict(c)
         pass
 
     def accepts(self, argv):
@@ -444,18 +460,35 @@ class MetaParser:
         if len(argv) < 1:
             return False
         else:
-            return (argv[0] in NcoParser.commands)    
+            return (argv[0] in self.action) 
 
     def parse(self, original, argv, lineNumber=0, factory=None):
         """Perform parsing and apply state changing logic"""
-        print "Metaparse", original
         cmd = argv[0]
         return self.action[cmd](original, argv, lineNumber, factory)
 
-    def cmdrm(self):
+    def disablecmdrm(self):
+        # Ideally, this would mark a file as dead, poisoning its name
+        # and preventing it from being marked as 'output'.
+        pass
+    
+    def disablecmdexit(self):
+        # Ideally, this would poison the rest of the parse, so that no further
+        # lines could be parsed and made into commands.
+        pass
+    def disablecmdls(self):
+        # Ideally, this would print file contents, but this is meaningless
+        # since we don't do I/O redirection or capture stdout.
+        # stdout is too painful to capture with twisted.web's interrupt
+        # handler in place.
         pass
 
-                                
+    def cmdcd(self, original, argv, lineNumber, factory):
+        if len(argv) > 1: target = os.path.normpath(self.pwd + "/" + argv[1])
+        else: target = self.pathHome
+        # print "cd moving from", self.pwd, "to", target
+        self.pwd = target # Apply the change.
+            
         
 
 class Parser:
