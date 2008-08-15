@@ -45,7 +45,7 @@ class Config:
               ("servicePubPath", "service", "filePath", "pub"),
               ("serviceMode", "service", "mode", "master"),
               ("serviceLevel", "service", "level", "production"),
-              ("servicePid", "service", "pidFile", "swamp.pid"),
+              ("servicePidFile", "service", "pidFile", "swamp.pid"),
               
               ("masterUrl", "service", "masterUrl", ""),
               ("masterAuth", "service", "masterAuth", ""),
