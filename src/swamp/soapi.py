@@ -88,9 +88,6 @@ class Instance:
         pass
    
 
-def selfTest():
-    jm = soapi.JobManager("swamp.conf")
-    jm.slaveExec()
 
 def pingTest(confFilename):
     """

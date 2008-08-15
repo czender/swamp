@@ -99,6 +99,7 @@ class StandardJobManager:
         else:
             config = Config()
         config.read()
+        config.writePid()
         le = LocalExecutor.newInstance(config) #always make one
         self.filemap = FileMapper("f"+str(os.getpid()),
                                   config.execSourcePath,
