@@ -288,11 +288,7 @@ class JobManager:
         
         
     def _setupLogging(self, config):
-        cfile = logging.FileHandler(config.logLocation)
-        formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
-        cfile.setFormatter(formatter)
-        log.addHandler(cfile)
-        log.setLevel(config.logLevel)
+        swamp.setupLog(config.logLocation, config.logLevel)
         log.info("Swamp slave logging at " + config.logLocation)
         
 

@@ -100,6 +100,9 @@ class StandardJobManager:
             config = Config()
         config.read()
         config.writePid()
+        #setup logger
+        self._setupLogging(config)
+
         le = LocalExecutor.newInstance(config) #always make one
         self.filemap = FileMapper("f"+str(os.getpid()),
                                   config.execSourcePath,
@@ -136,6 +139,11 @@ class StandardJobManager:
         self.discardedJobs = {}
         self._setupMaster()
         pass
+
+    def _setupLogging(self, config):
+        swamp.setupLog(config.logLocation, config.logLevel)
+        log.info("Swamp master logging at " + config.logLocation)
+     
 
     def _setupMaster(self):
         self._workers = {}

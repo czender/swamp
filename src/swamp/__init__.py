@@ -22,3 +22,10 @@ __all__ = []
 # Setup logger (? might move this to a separate file)
 import logging
 log = logging.getLogger("SWAMP")
+
+def setupLog(location, level):
+    cfile = logging.FileHandler(self.config.logLocation)
+    formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
+    cfile.setFormatter(formatter)
+    log.addHandler(cfile)
+    log.setLevel(self.config.logLevel)
