@@ -136,7 +136,7 @@ class Config:
 
     def writePid(self, filename=None):
         if not filename:
-            filename = self.servicePidFile
+            filename = self.config.servicePidFile
         try:
             open(filename, "w").write(str(os.getpid())+"\n")
         except:
