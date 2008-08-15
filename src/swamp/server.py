@@ -20,6 +20,7 @@ import SOAPpy
 
 # SWAMP imports 
 from swamp import log
+import swamp
 from swamp_common import *
 from swamp.config import Config     
 import swamp.inspector as inspector
@@ -176,7 +177,9 @@ class JobManager:
         self.config.update(overrides)
         
         self.config.dumpSettings(log, logging.DEBUG)
-        self._setupLogging(self.config)
+        swamp.setupLog(self.config.logLocation, self.config.logLevel)
+        log.info("Swamp slave logging at " + self.config.logLocation)
+
         statistics.initTracker(self.config)
         self.jobs = {} # dict: tokens -> jobstate
    
@@ -287,11 +290,6 @@ class JobManager:
                                 self.config.execBulkPath)]
         
         
-    def _setupLogging(self, config):
-        swamp.setupLog(config.logLocation, config.logLevel)
-        log.info("Swamp slave logging at " + config.logLocation)
-        
-
     def reset(self):
         # Clean up trash from before:
         # - For now, don't worry about checking jobs still in progress
