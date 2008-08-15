@@ -45,6 +45,7 @@ class Config:
               ("servicePubPath", "service", "filePath", "pub"),
               ("serviceMode", "service", "mode", "master"),
               ("serviceLevel", "service", "level", "production"),
+              ("servicePid", "service", "pidFile", "swamp.pid"),
               
               ("masterUrl", "service", "masterUrl", ""),
               ("masterAuth", "service", "masterAuth", ""),
@@ -131,7 +132,16 @@ class Config:
     def update(self, overrides):
         if overrides:
             log.warning("Unimplemented configuration overriding code.")
-        pass 
+        pass
+
+    def writePid(self, filename=None):
+        if not filename:
+            filename = self.servicePidFile
+        try:
+            open(filename, "w").write(str(os.getpid())+"\n")
+        except:
+            log.warning("Couldn't write pid to %s" % filename)
+        pass
             
     @staticmethod
     def dummyConfig():
