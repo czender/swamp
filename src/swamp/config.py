@@ -22,7 +22,7 @@ class Config:
     #defaults
     CFGMAP = [("logDisable", "log", "disable", False),
               ("logLocation", "log", "location",
-               "/home/wangd/opendap/iroot/ssdap.log"),
+               "swamp.log"),
               ("logLevel", "log", "level", logging.DEBUG),
 
               ("execNco4", "exec", "nco4",
@@ -136,7 +136,7 @@ class Config:
 
     def writePid(self, filename=None):
         if not filename:
-            filename = self.config.servicePidFile
+            filename = self.servicePidFile
         try:
             open(filename, "w").write(str(os.getpid())+"\n")
         except:
