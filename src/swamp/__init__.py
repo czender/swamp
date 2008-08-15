@@ -24,8 +24,8 @@ import logging
 log = logging.getLogger("SWAMP")
 
 def setupLog(location, level):
-    cfile = logging.FileHandler(self.config.logLocation)
+    cfile = logging.FileHandler(location)
     formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
     cfile.setFormatter(formatter)
     log.addHandler(cfile)
-    log.setLevel(self.config.logLevel)
+    log.setLevel(level)
