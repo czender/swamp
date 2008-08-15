@@ -206,13 +206,6 @@ class SwampInterface:
     thread runs whatever tasks are queued up."""
     def __init__(self, config, executor=None):
         self.config = config
-        #setup logger
-        cfile = logging.FileHandler(self.config.logLocation)
-        formatter = logging.Formatter('%(name)s:%(levelname)s %(message)s')
-        cfile.setFormatter(formatter)
-        log.addHandler(cfile)
-        log.setLevel(self.config.logLevel)
-        log.info("Swamp master logging at " + self.config.logLocation)
         self.config.dumpSettings(log, logging.DEBUG)
 
         statistics.initTracker(config)
