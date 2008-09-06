@@ -114,10 +114,14 @@ class SwampTask:
         or a list of either"""
         if getattr(obj, "actualOutputs", False): # duck-typing
             actfiles = obj.actualOutputs
-        else:
+        elif getattr(obj, "outputs", False):  
             log.error("publishifoutput expected cmd, but got %s"%str(obj))
             #don't know how to publish.
             return
+        else: 
+            # Remote cmd will have empty actualOutputs 
+            # (which evaluates to False)
+            return # I don't need to publish if actualOutputs is empty
             pass
         log.debug("raw outs are %s" %(str(actfiles)))
         files = filter(lambda f: f[0] in self.logOuts, actfiles)

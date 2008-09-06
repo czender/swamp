@@ -35,6 +35,24 @@ def statDagGraph(cmdList, record=set()):
         otuples.extend(tuples)
     return "\n".join(otuples)
 
+def statDagGraphCmds(cmdList, record=set()):
+    otuples = []
+    for c in cmdList:
+        i = c.parents
+        o = c.children
+        ituples = []
+        for f in i:
+            #ituples.append([f,id(c)])
+            ituples.append([f.name,c.name])
+        for f in o:
+            ituples.append([c.name,f.name])
+            #ituples.append([id(c),f])
+        tuples = map(lambda t: " -> ".join(map(lambda s: '"%s"'%str(s),t)), ituples)
+        tuples = (filter(lambda t: t not in record, tuples))
+        record.update(tuples)
+        otuples.extend(tuples)
+    return "\n".join(otuples)
+
 def statDagGraphOld(cmdList, record=set()):
     otuples = []
     for c in cmdList:
@@ -358,7 +376,8 @@ class Bipartitioner:
     def __init__(self, cmdList):
         tolerance = 0.2
         self.original = cmdList
-        
+        self.passcount = 0
+
         total = len(cmdList)
         self._limits = ((0.5-tolerance)*total,(0.5+tolerance)*total)
         self._halftotal = total/2
@@ -367,6 +386,7 @@ class Bipartitioner:
                      set(cmdList[self._halftotal:])]
         for i in range(6):
             state = self._makePass()
+            self.passcount += 1
             print "iteration gain: %d, sizes: %d %d" %(state[0],
                                                        len(state[1]),
                                                        len(state[2]))
@@ -374,25 +394,29 @@ class Bipartitioner:
                 print "No gain, no more passes needed."
                 break
             self.sets = [state[1],state[2]]
-
+            self.savecopy = [state[1].copy(), state[2].copy()]
+        self.sets = self.savecopy
+        self._writeSetState("stage%d_%d"%(self.passcount,0))
         
-
     def _makePass(self):
         self._locked = set() # locked nodes
         # while cutsize is reduced
         # while valid moves exist
         # use bucket data to find unlocked node in each partition that most improves cutsize
-        (ba, bb) = self._makeBuckets(self.sets)
-        self._buckets = [ba,bb]
+        self._makeBuckets(self.sets)
+        ba = self._buckets[0]
+        bb = self._buckets[1]
+        
         #print "Buckets One", ba
         #print "Bucket Two", bb
-        self._writeSetState("stage0")
+        self._writeSetState("stage%d_0"%(self.passcount))
         print "(%d, %d)" %(tuple(map(len,self.sets)))
         def getMax(bucket):
             while True:
                 m = max(bucket)
                 c = bucket[m]
                 if c:
+                    print bucket, " ----has max----", m,c
                     return (m,c)
                 bucket.pop(m)
                                     
@@ -402,23 +426,27 @@ class Bipartitioner:
         # iterate through a pass, move at most half the nodes.
         for i in range(self._halftotal):
             #self._printBucketState()
+            print "left:", " ".join(map(lambda c: c.name+":"+str(c.biPartChain[1]), self.sets[0]))
+            print "right:", " ".join(map(lambda c: c.name+":"+str(c.biPartChain[1]), self.sets[1]))
             maxa = getMax(ba)
             maxb = getMax(bb)
-            if maxa[0] > maxb[0]:
+            if maxa[0] > maxb[0] and len(ba) > self._limits[0]:
                 # move from a to b
-                self._moveChainNode(maxa[1], self.sets, (ba,bb))
+                self._moveChainNode(maxa[1], [0,1], (ba,bb))
                 gainstate += maxa[0]
             else:
                 # move from b to a
-                self._moveChainNode(maxb[1], [self.sets[1],self.sets[0]], (bb,ba))
+                self._moveChainNode(maxb[1], [1,0], (bb,ba))
                 gainstate += maxb[0]
-
-            self._writeSetState("stage%d"%(i+1))
+            print "sub", gainstate
+            self._writeSetState("stage%d_%d"%(self.passcount,i+1))
             states.append((gainstate, self.sets[0].copy(), self.sets[1].copy()))
             #print "(%d, %d)" %(tuple(map(len,self.sets)))
             if not (self._limits[0] < len(self.sets[0]) < self._limits[1]):
                 break
         # backtrack and return best state
+        print "gainstate",gainstate
+        #print "gainstates", states
         return max(states)
 
     def _printBucketState(self):
@@ -441,10 +469,16 @@ class Bipartitioner:
         e = chain.pop()
         if e in self._locked:
             print "error! can't move locked node."
-        sets[0].remove(e)
-        sets[1].add(e)
-        e.biPartBuckets = [e.biPartBuckets[1],e.biPartBuckets[0]]
-        e.biPartSets = [e.biPartSets[1],e.biPartSets[0]]
+            
+        self.sets[sets[0]].remove(e)
+        self.sets[sets[1]].add(e)
+        #remove myself from my bucket
+        self._buckets[e.biPartBuckets[0]][e.biPartChain[1]]
+        #e.biPartBuckets = [e.biPartBuckets[1],e.biPartBuckets[0]]
+        e.biPartBuckets.reverse()
+        e.biPartSets.reverse()
+
+        #e.biPartSets = [e.biPartSets[1],e.biPartSets[0]]
 
         #find new gain: (We can actually skip this step)
         #self._addToBucket(buckets[1], e, sets[1], sets[0])
@@ -461,7 +495,15 @@ class Bipartitioner:
         # find what bucket node we're in.
         mybucket = node.biPartBuckets[0]
         mysets = node.biPartSets
-        myChain = node.biPartChain[0][node.biPartChain[1]]
+        (bucketnum, gain) = node.biPartChain
+        try:
+            myChain = self._buckets[bucketnum][gain]
+        except:
+            print "didn't find",gain,"in",self._buckets[bucketnum]
+            if bucketnum == 1: checknum = 0
+            else: checknum = 1
+            print "maybe in", self._buckets[checknum]
+            return
         # we weren't in the chain: not bucketed anymore.
         if node not in myChain:
             assert node in self._locked
@@ -475,46 +517,49 @@ class Bipartitioner:
         self._addToBucket(mybucket, node, mysets[0], mysets[1])
         # 
        
-    def _addToBucket(self, bucket, cmd, a, b):
+    def _addToBucket(self, bucketnum, cmd, a, b):
+        bucket = self._buckets[bucketnum]
         gain = self._findGain(cmd, a,b)
         #print "looking for gain",gain, bucket[gain]
         bucket[gain] = bucket.get(gain,[]) + [cmd]
         #print "newgain",gain, bucket[gain]
-        cmd.biPartChain = (bucket,gain) # faulty if we put bucket[gain] here
+        cmd.biPartChain = (bucketnum,gain) # faulty if we put bucket[gain] here
 
         
     def _makeBuckets(self, sets):
         buck = [{},{}]
+        self._buckets = buck
         # add a field to each command to eliminate need for extra table
-        def fieldAdder(buckets, sets):
+        def fieldAdder(indices):
             def add(c):
-                c.biPartBuckets = buckets
-                c.biPartSets = sets
+                c.biPartBuckets = indices
+                c.biPartSets = indices
             return add
-        map(fieldAdder(buck, sets), sets[0])
-        (rb, rs) = (buck[:], sets[:])
-        rb.reverse()
-        rs.reverse()
-        map(fieldAdder(rb,rs), sets[1])
+        map(fieldAdder([0,1]), sets[0])
+        map(fieldAdder([1,0]), sets[1])
 
-        map(lambda c: self._addToBucket(buck[0], c, sets[0], sets[1]), sets[0])
-        map(lambda c: self._addToBucket(buck[1], c, sets[1], sets[0]), sets[1])
+        map(lambda c: self._addToBucket(0, c, 0, 1), sets[0])
+        map(lambda c: self._addToBucket(1, c, 1, 0), sets[1])
         return buck
 
 
     def _findGain(self, cmd, source, dest):
         # gain(move) = number of cross-partition nets before - after
         # gain approximates the benefit from moving a command.
-        # so, gain = -delta(cost) = -(cost_after - cost_before)
+        # so, gain = -delta(cost) = -(cost_after - cost_bfore)
         # = cost_before - cost_after
         
         # before: num of neighbors in other part
         # after: num of neighbors in current part
         # assume cost=1, but can estimate later
-        source = cmd.biPartBuckets[0]
-        beforecount = len(filter(lambda x: x in dest,
+        ###source = self._buckets[cmd.biPartBuckets[0]]
+        beforecount = len(filter(lambda x: x in self.sets[dest],
                                  cmd.parents + cmd.children))
         aftercount = len(cmd.parents)+len(cmd.children) - beforecount
+        print cmd.name, source,dest, "b,a", beforecount, aftercount
+        #print "parents", " ".join(map(lambda x:x.name,cmd.parents))
+        #print "children", " ".join(map(lambda x:x.name,cmd.children))
+
         cmd.bipartGain = beforecount-aftercount
         return beforecount - aftercount
 
@@ -522,14 +567,17 @@ class Bipartitioner:
         pass
 
     def _writeSetState(self,label):
+        rec = set()
         stage0 = [
             "digraph %s {" % label,
             "subgraph clustera { ",
-            str(statDagGraph(self.sets[0])),
+            ";\n".join(map(lambda c:'"%s"'%c.name, self.sets[0])),
             "}",
             "subgraph clusterb { ",
-            str(statDagGraph(self.sets[1])),
+            ";\n".join(map(lambda c:'"%s"'%c.name, self.sets[1])),
             "}",
+            str(statDagGraphCmds(self.sets[0], rec)),
+            str(statDagGraphCmds(self.sets[1], rec)),
             "}"]
         open("%s.dot" %label,"w").write("\n".join(stage0))
         pass
@@ -537,3 +585,51 @@ class Bipartitioner:
     def result(self):
         return self.sets[0],self.sets[1]
 
+class FakeCmd:
+    def __init__(self, name="Noname", parents=[], children=[]):
+        self.name = name
+        self.parents = parents # Link myself to my parents
+        self.outputs = []
+        self.inputs = []
+        self.oname = name+"_output"
+        for c in parents: # Link each parent to me
+            oname = c.name+"_output"
+            self.inputs.append(oname)
+            if oname not in c.outputs:
+                c.outputs.append(oname)
+            c.children.append(self)
+        
+        self.children = children # Link me to my children
+        for c in children: # Link each child to me
+            if not self.outputs:
+                self.outputs.append(self.oname)
+            c.outputs.append(self.oname)
+            c.parents.append(self) 
+        pass
+
+def makeIpccIter(prefix="", parents=[]):
+    a = FakeCmd(name=prefix+"a", parents=parents, children=[])
+    b = FakeCmd(name=prefix+"b", parents=[a], children=[])
+    c = FakeCmd(name=prefix+"c", parents=[a,b], children=[])
+    return [a,b,c]
+
+def makeFakeCmds():
+    clist = []
+    one = makeIpccIter(prefix="1")
+    two = makeIpccIter(prefix="2")
+    three = makeIpccIter(prefix="3")
+    ens = makeIpccIter(prefix="E", parents=[one[0], two[0], three[0]])
+    map(lambda l: clist.extend(l), [one,two,three,ens])
+    return clist
+
+def selftest():
+    cl = makeFakeCmds()
+    import random # randomize list order
+    random.shuffle(cl)
+    bp = Bipartitioner(cl)
+    s0 = bp.sets[0]
+    s1 = bp.sets[1]
+    #bp2 = Bipartitioner(map(lambda x:x, s0))
+
+if __name__ == '__main__':
+    selftest()
